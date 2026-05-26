@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Category {
+  id                String    @id @default(uuid())
+  name              String
+  icon              String?   // Ex: 🍕, 🍺
+  codigo            Int?      @unique // Código sequencial do grupo (1000, 2000...)
+  fractionPriceMode String    @default("highest") // highest, average
+  allowFractional   Boolean   @default(false)
+  products          Product[]
+}
+
+model Product {
+  id         String      @id @default(uuid())
+  codigo     String      @unique // Código interno do produto (Ex: 001, 1050)
+  name       String
+  price      Float
+  cost       Float       @default(0) // Custo do produto (CMV)
+  icon       String?     // Para exibir no PDV (ex: 🍔)
+  categoria  String?     // Categoria do produto (filtro/fiscal)
+  
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id])
+  
+  // Observações predefinidas separadas por vírgula (ex: "Sem Gelo,Limão e Sal")
+  availableObs String?
+  
+  // Regras de Fracionamento (Pizza meio a meio, etc)
+  maxFlavors Int         @default(1) // 1 = Simples, 2 = Meio a Meio, 4 = Quatro sabores
+  
+  // Dados Fiscais (Projeção NFC-e/SAT)
+  ncm        String?
+  cest       String?
+  cfop       String?
+  icmsOrigem String?     @default("0") // 0 = Nacional
+
+  orderItems OrderItem[]
+  active     Boolean     @default(true)
+  printSector String?     @default("CAIXA")
+}
+
+model Table {
+  id     String  @id @default(uuid())
+  number Int     @unique
+  status String  @default("free") // free, occupied
+  orders Order[]
+}
+
+// ==========================================
+// MÓDULO FINANCEIRO E DE AUDITORIA
+// ==========================================
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  role      String   @default("waiter") // waiter, manager, admin
+  passcode  String   @unique // Senha numérica para PDV
+  active    Boolean  @default(true)
+}
+
+model PaymentMethod {
+  id             String  @id @default(uuid())
+  name           String
+  feePercentage  Float   @default(0) // Taxa (Ex: 2.5 para 2.5%)
+  active         Boolean @default(true)
+}
+
+model CashRegister {
+  id             String            @id @default(uuid())
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  initialBalance Float             @default(0) // Fundo de Troco
+  closingBalance Float?            // Informado pelo operador
+  systemBalance  Float?            // Calculado pelo sistema
+  status         String            @default("open") // open, closed
+  userId         String            // Quem abriu o caixa
+  reconciliationData String?       // Relatorio de reconciliacao detalhado (JSON)
+  transactions   CashTransaction[]
+}
+
+model CashTransaction {
+  id             String       @id @default(uuid())
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+  type           String       // "sangria" ou "suprimento"
+  amount         Float
+  description    String?      // Justificativa
+  createdAt      DateTime     @default(now())
+}
+
+
+model CancellationReason {
+  id          String @id @default(uuid())
+  description String
+  active      Boolean @default(true)
+}
+
+model Order {
+  id            String          @id @default(uuid())
+  tableId       String?
+  table         Table?          @relation(fields: [tableId], references: [id])
+  status        String          @default("open") // open, paid, cancelled
+  
+  // Módulo de Delivery & Balcão
+  type            String        @default("MESA") // MESA, DELIVERY, BALCAO
+  customerName    String?
+  customerPhone   String?
+  customerAddress String?
+  deliveryFee     Float         @default(0)
+  deliveryStatus  String?       // pending, preparing, delivering, delivered, completed
+  
+  driverId        String?
+  driver          Driver?       @relation(fields: [driverId], references: [id])
+  
+  // Taxas e Acréscimos
+  discount      Float           @default(0)
+  serviceFee    Float           @default(0) // 10%
+  couvert       Float           @default(0) // Couvert Artístico
+  subtotal      Float           @default(0)
+  total         Float           @default(0)
+  peopleCount   Int             @default(1) // Qtd de pessoas na mesa (PAX)
+  
+  paymentMethod String?         // Campo legado (migrar para Payments)
+  payments      Payment[]       // Pagamentos vinculados (divisão de conta)
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  items         OrderItem[]
+  tickets       KitchenTicket[]
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  method    String   // Nome ou ID do PaymentMethod
+  amount    Float
+  feeAmount Float    @default(0) // Valor deduzido da taxa
+  createdAt DateTime @default(now())
+}
+
+model OrderItem {
+  id            String   @id @default(uuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id])
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id])
+  productName   String?  // Nome gravado no momento da venda (p/ histórico)
+  qty           Float    // Alterado para Float para suportar 0.5 (metade)
+  price         Float    // Preço no momento da venda
+  observations  String?  // Ex: "Bem passado, sem cebola"
+  
+  // Frações (Meio a meio)
+  isFractioned  Boolean  @default(false)
+  fractionData  String?  // Ex: "1/2 Frango, 1/2 Calabresa"
+  
+  // Status PDV/Cozinha
+  status        String   @default("pending") // pending, sent, ready
+  
+  // Auditoria de Cancelamento
+  isCancelled   Boolean  @default(false)
+  cancelReason  String?
+  cancelledBy   String?  // ID do User
+  
+  createdAt     DateTime @default(now())
+}
+
+model KitchenTicket {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  status    String   @default("pending") // pending, ready
+  createdAt DateTime @default(now())
+}
+
+model Driver {
+  id     String  @id @default(uuid())
+  name   String
+  phone  String?
+  active Boolean @default(true)
+  orders Order[]
+}

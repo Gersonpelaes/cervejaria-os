@@ -1,0 +1,62 @@
+========================================================================
+                      PDV RESTAURANTE 2025
+========================================================================
+
+Este é o sistema unificado de Ponto de Venda (PDV) e Retaguarda do Restaurante.
+Desenvolvido para rodar localmente de forma rápida, segura e silenciosa.
+
+------------------------------------------------------------------------
+REQUISITOS DO SISTEMA
+------------------------------------------------------------------------
+- Sistema Operacional: Windows 10 ou Windows 11.
+- Conexão com a Internet (apenas para a primeira instalação/atualização).
+
+------------------------------------------------------------------------
+COMO INSTALAR EM OUTROS COMPUTADORES (PRODUÇÃO OU TESTES)
+------------------------------------------------------------------------
+1. Copie a pasta completa "PDV RESTAURANTE 2025" para o computador de destino
+   (recomenda-se colocar na Área de Trabalho ou pasta de documentos).
+2. Abra a pasta e execute o arquivo "instalar.bat" (clique duas vezes).
+3. Durante a instalação do Banco de Dados, o instalador perguntará:
+   - "Deseja instalar o banco de dados ZERADO/LIMPO ou COM DEMONSTRAÇÃO?"
+     * Escolha [L] (Zerado/Limpo - Recomendado para produção): O sistema é
+       instalado com um banco zerado contendo apenas a infraestrutura ativa:
+       Admin padrão (senha 1234), 50 mesas e formas de pagamento padrão. Prontinho
+       para cadastrar os produtos reais do cliente.
+     * Escolha [D] (Demonstração): O sistema é instalado pré-populado com
+       produtos, pizzas, bebidas e categorias fictícias de demonstração.
+   - Caso já exista um banco anterior, o instalador perguntará se deseja resetá-lo.
+4. O instalador automático irá:
+   - Verificar se o Node.js está instalado (e instalar silenciosamente se necessário).
+   - Instalar todas as dependências do Frontend e Backend.
+   - Sincronizar e preparar o Banco de Dados local na opção escolhida.
+   - Compilar o sistema em versão de produção.
+   - Criar dois atalhos na Área de Trabalho:
+     * "PDV RESTAURANTE 2025" (para iniciar o sistema de forma silenciosa).
+     * "Parar PDV RESTAURANTE 2025" (para encerrar o servidor em segundo plano).
+
+------------------------------------------------------------------------
+COMO UTILIZAR O SISTEMA
+------------------------------------------------------------------------
+- PARA INICIAR:
+  Dê dois cliques no atalho "PDV RESTAURANTE 2025" na Área de Trabalho.
+  O sistema iniciará o servidor silenciosamente em segundo plano (sem janelas
+  pretas abertas atrapalhando o operador) e abrirá automaticamente o navegador
+  em http://localhost:3001.
+
+- PARA PARAR:
+  Dê dois cliques no atalho "Parar PDV RESTAURANTE 2025" na Área de Trabalho.
+  Isso encerrará o servidor em segundo plano de forma limpa.
+
+------------------------------------------------------------------------
+ATUALIZAÇÃO DO SISTEMA
+------------------------------------------------------------------------
+Caso novas atualizações sejam publicadas no GitHub:
+1. Dê dois cliques no arquivo "atualizar.bat" dentro da pasta do sistema.
+2. Ele baixará a versão mais recente, atualizará os arquivos do sistema e
+   reconstruirá a aplicação, PRESERVANDO o banco de dados local (dev.db) e
+   as configurações da impressora e do restaurante.
+
+========================================================================
+Suporte e Desenvolvimento - 2025
+========================================================================

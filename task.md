@@ -1,0 +1,43 @@
+# Tarefas - Instalação, Migração, Unificação e Backups do PDV Restaurante 2025
+
+- [x] Parar os servidores de desenvolvimento ativos (frontend e backend)
+- [x] Criar a nova pasta `PDV RESTAURANTE 2025` e copiar os arquivos do projeto
+- [x] Modificar o título no `index.html` para "PDV RESTAURANTE 2025"
+- [x] Atualizar `src/App.jsx` para resolver endpoints de API e socket dinamicamente
+- [x] Configurar `backend/server.js` para servir a pasta `dist` estaticamente
+- [x] Criar script de inicialização `iniciar.bat`
+- [x] Criar script de atualização automática `atualizar.bat`
+- [x] Criar script instalador `instalar.bat` (e utilitários)
+- [x] Executar compilação de produção e validar inicialização no servidor unificado (porta 3001)
+- [x] Criar endpoints de backup manual e restauração no backend (`/api/backup/create`, `/api/backup/restore`, `/api/backup/list`)
+- [x] Configurar rotinas de backup automático no backend (diário no início do servidor e a cada fechamento de caixa)
+- [x] Integrar seção de Backups no painel de Retaguarda no Frontend (`src/App.jsx`)
+- [x] Criar script de inicialização silenciosa `iniciar.vbs` para ocultar janelas de CMD no navegador
+- [x] Criar script de encerramento limpo do servidor `parar.bat`
+- [x] Corrigir execução silenciosa do VBScript no atalho da Área de Trabalho (direcionando para `wscript.exe` com argumentos apropriados)
+- [x] Gerar uma imagem de logo de restaurante/cervejaria premium usando IA
+- [x] Converter a imagem gerada em arquivo de ícone multi-resolução (.ico) do Windows
+- [x] Atualizar o instalador `instalar.bat` para vincular o novo ícone personalizado ao atalho do aplicativo
+- [x] Renomear cabeçalho do login de "Colibri Web PDV" para "PDV RESTAURANTE 2025"
+- [x] Criar guia de instalação passo a passo (`LEIAME.txt`) para outros computadores
+- [x] Criar campo `codigo` (Int) na tabela Category no banco de dados e aplicar via Prisma push
+- [x] Implementar rotina de codificação automática retroativa de categorias existentes ao iniciar o servidor
+- [x] Auto-gerar códigos de categorias sequenciais de 1000 em 1000 na rota de criação do backend
+- [x] Auto-gerar códigos de produtos no intervalo do grupo associado (ex: 1001, 1002 para grupo 1000)
+- [x] Atualizar modal de produto no frontend para tornar o campo "Código Interno" opcional e amigável
+- [x] Testar e validar a geração automática de códigos e compatibilidade com fluxo de duplicação
+- [x] Criar campo `active` (Boolean) na tabela Category no banco de dados e aplicar via Prisma push
+- [x] Atualizar rotas de Category e Product no backend para salvar o status de ativo/inativo
+- [x] Adicionar filtros de status ativo/inativo para Produtos e Grupos no painel de busca da Retaguarda
+- [x] Atualizar Frente de Caixa (PDV) para ocultar automaticamente produtos e categorias inativas
+- [x] Integrar checkboxes de ativação nos modais de edição de Produto e Categoria no Frontend
+- [x] Implementar Impressão Térmica Direta no backend (leitura do printer_config.json e controle de autoPrint)
+- [x] Implementar setorização de impressões (CAIXA, COZINHA, BAR) com mapeamento de impressoras físicas no backend
+- [x] Atualizar modelo Product no banco de dados com o campo printSector (default: CAIXA)
+- [x] Ajustar criação e salvamento de produtos no backend para persistir o printSector
+- [x] Integrar seleção de Setor de Impressão no modal de Produto no Frontend (Dados Básicos)
+- [x] Criar formulário de Configuração de Impressora robusto no painel de Retaguarda com abas/campos para CAIXA, COZINHA e BAR e flags gerais
+- [x] Configurar confirmação de Pré-Conta e fechamento de mesas respeitando a flag printPreBillAlwaysAsk
+- [x] Implementar validação e bloqueio de impressão de Fechamento de Caixa respeitando a flag printRegisterCloseEnabled
+- [x] Executar testes integrados e realizar compilação de produção sem qualquer erro
+- [x] Atualizar o arquivo `walkthrough.md` com a documentação final
