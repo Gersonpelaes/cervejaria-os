@@ -209,6 +209,16 @@ const runRetroactiveCoding = async () => {
 const initServer = async () => {
   await seedDatabase();
   await runRetroactiveCoding();
+  // Garante que "Conta Assinada" sempre exista nos métodos de pagamento
+  try {
+    const pm = await prisma.paymentMethod.findFirst({ where: { name: 'Conta Assinada' } });
+    if (!pm) {
+      await prisma.paymentMethod.create({ data: { name: 'Conta Assinada', feePercentage: 0 } });
+      console.log("   💳 Forma de pagamento 'Conta Assinada' criada com sucesso!");
+    }
+  } catch (err) {
+    console.error("Erro ao verificar/criar Conta Assinada:", err);
+  }
 };
 initServer();
 
@@ -813,6 +823,136 @@ app.post('/api/users', async (req, res) => {
   res.json(user);
 });
 
+// ==========================================
+// MÓDULO DE CLIENTES E CONTAS ASSINADAS
+// ==========================================
+
+// Listar todos os clientes
+app.get('/api/customers', async (req, res) => {
+  try {
+    const customers = await prisma.customer.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' }
+    });
+    res.json(customers);
+  } catch (error) {
+    console.error("Erro ao listar clientes:", error);
+    res.status(500).json({ error: "Erro ao buscar clientes" });
+  }
+});
+
+// Cadastrar ou atualizar cliente
+app.post('/api/customers', async (req, res) => {
+  const { id, name, phone, address, signedLimit } = req.body;
+  try {
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "O nome do cliente é obrigatório." });
+    }
+
+    const limit = signedLimit !== undefined ? Number(signedLimit) : 500;
+
+    let customer;
+    if (id) {
+      customer = await prisma.customer.update({
+        where: { id },
+        data: { name, phone, address, signedLimit: limit }
+      });
+    } else {
+      customer = await prisma.customer.create({
+        data: { name, phone, address, signedLimit: limit, signedBalance: 0, active: true }
+      });
+    }
+    res.json(customer);
+  } catch (error) {
+    console.error("Erro ao salvar cliente:", error);
+    res.status(500).json({ error: "Erro ao salvar cliente: " + error.message });
+  }
+});
+
+// Exclusão lógica (desativar cliente)
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await prisma.customer.update({
+      where: { id },
+      data: { active: false }
+    });
+    res.json({ success: true, customer });
+  } catch (error) {
+    console.error("Erro ao deletar cliente:", error);
+    res.status(500).json({ error: "Erro ao deletar cliente." });
+  }
+});
+
+// Obter extrato de transações do cliente
+app.get('/api/customers/:id/transactions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const transactions = await prisma.customerTransaction.findMany({
+      where: { customerId: id },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(transactions);
+  } catch (error) {
+    console.error("Erro ao buscar transações:", error);
+    res.status(500).json({ error: "Erro ao buscar transações" });
+  }
+});
+
+// Registrar reembolso / pagamento de fiado
+app.post('/api/customers/:id/repay', async (req, res) => {
+  const { id } = req.params;
+  const { amount, method, description } = req.body;
+  try {
+    const repayAmount = Number(amount);
+    if (isNaN(repayAmount) || repayAmount <= 0) {
+      return res.status(400).json({ error: "O valor do pagamento deve ser maior que zero." });
+    }
+
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+      return res.status(404).json({ error: "Cliente não encontrado." });
+    }
+
+    const newBalance = Number((customer.signedBalance - repayAmount).toFixed(2));
+
+    const [updatedCustomer, tx] = await prisma.$transaction([
+      prisma.customer.update({
+        where: { id },
+        data: { signedBalance: newBalance }
+      }),
+      prisma.customerTransaction.create({
+        data: {
+          customerId: id,
+          type: 'credit',
+          amount: repayAmount,
+          description: description || `Pagamento fiado via ${method || 'Dinheiro'}`
+        }
+      })
+    ]);
+
+    const canonical = getCanonicalMethod(method);
+    if (canonical === 'Dinheiro' || canonical === 'PIX') {
+      const openCaixa = await prisma.cashRegister.findFirst({ where: { status: 'open' } });
+      if (openCaixa) {
+        await prisma.cashTransaction.create({
+          data: {
+            cashRegisterId: openCaixa.id,
+            type: 'suprimento',
+            amount: repayAmount,
+            description: `Recebimento Fiado: ${customer.name} - ${method || 'Dinheiro'}`
+          }
+        });
+      }
+    }
+
+    res.json({ success: true, customer: updatedCustomer, transaction: tx });
+  } catch (error) {
+    console.error("Erro ao registrar pagamento de fiado:", error);
+    res.status(500).json({ error: "Erro interno ao registrar pagamento: " + error.message });
+  }
+});
+
 // 1.5 Métodos de Pagamento
 app.get('/api/payment_methods', async (req, res) => {
   const methods = await prisma.paymentMethod.findMany({ where: { active: true } });
@@ -1069,11 +1209,58 @@ app.post('/api/orders', async (req, res) => {
 
 // 4. Fechamento de Conta (AVANÇADO)
 app.post('/api/orders/:id/checkout', async (req, res) => {
-  const { payments, discount, serviceFee, couvert, total, peopleCount } = req.body;
+  const { payments, discount, serviceFee, couvert, total, peopleCount, customerId } = req.body;
   
   try {
     const existingOrder = await prisma.order.findUnique({ where: { id: req.params.id } });
     if (!existingOrder) return res.status(404).json({ error: "Pedido não encontrado" });
+
+    // Validar limite de Conta Assinada (Fiado) se aplicável
+    let signedAmount = 0;
+    if (payments && payments.length > 0) {
+      payments.forEach(p => {
+        if (getCanonicalMethod(p.method) === 'Conta Assinada') {
+          signedAmount += Number(p.amount);
+        }
+      });
+    }
+
+    if (signedAmount > 0) {
+      if (!customerId) {
+        return res.status(400).json({ error: "Um cliente cadastrado deve ser selecionado para vendas em Conta Assinada (Fiado)." });
+      }
+      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+      if (!customer) {
+        return res.status(404).json({ error: "Cliente selecionado não foi encontrado." });
+      }
+      if (!customer.active) {
+        return res.status(400).json({ error: "O cliente selecionado está inativo." });
+      }
+      
+      const newSignedBalance = Number((customer.signedBalance + signedAmount).toFixed(2));
+      if (newSignedBalance > customer.signedLimit) {
+        return res.status(400).json({
+          error: `Limite de fiado excedido para ${customer.name}! Limite: R$ ${customer.signedLimit.toFixed(2)}. Saldo devedor atual: R$ ${customer.signedBalance.toFixed(2)}. Tentativa de compra: R$ ${signedAmount.toFixed(2)}.`
+        });
+      }
+
+      // Atualiza o saldo do cliente e cria a transação de débito
+      await prisma.$transaction([
+        prisma.customer.update({
+          where: { id: customerId },
+          data: { signedBalance: newSignedBalance }
+        }),
+        prisma.customerTransaction.create({
+          data: {
+            customerId,
+            type: 'debit',
+            amount: signedAmount,
+            orderId: req.params.id,
+            description: `Venda Comanda/Pedido #${existingOrder.tableId ? 'Mesa' : 'Delivery'}`
+          }
+        })
+      ]);
+    }
 
     const order = await prisma.order.update({
       where: { id: req.params.id },
@@ -1085,7 +1272,8 @@ app.post('/api/orders/:id/checkout', async (req, res) => {
         deliveryFee: req.body.deliveryFee !== undefined ? Number(req.body.deliveryFee) : (existingOrder.deliveryFee || 0),
         deliveryStatus: existingOrder.type === 'DELIVERY' || existingOrder.type === 'BALCAO' ? 'completed' : existingOrder.deliveryStatus,
         total: Number(total) || 0,
-        peopleCount: Number(peopleCount) || 1
+        peopleCount: Number(peopleCount) || 1,
+        customerId: customerId || null
       }
     });
 
@@ -1129,13 +1317,44 @@ app.post('/api/orders/:id/checkout', async (req, res) => {
 
 // 4.1 Pagamento Parcial (Receber por Item)
 app.post('/api/orders/:id/partial-checkout', async (req, res) => {
-  const { itemsToPay, payments, discount, serviceFee, couvert, total, peopleCount } = req.body;
+  const { itemsToPay, payments, discount, serviceFee, couvert, total, peopleCount, customerId } = req.body;
   const originalOrderId = req.params.id;
 
   try {
     // 1. Cria uma nova "Sub-Comanda" paga para a mesma mesa
     const originalOrder = await prisma.order.findUnique({ where: { id: originalOrderId } });
     
+    // Validar limite de Conta Assinada (Fiado) se aplicável
+    let signedAmount = 0;
+    if (payments && payments.length > 0) {
+      payments.forEach(p => {
+        if (getCanonicalMethod(p.method) === 'Conta Assinada') {
+          signedAmount += Number(p.amount);
+        }
+      });
+    }
+
+    let customer = null;
+    if (signedAmount > 0) {
+      if (!customerId) {
+        return res.status(400).json({ error: "Um cliente cadastrado deve ser selecionado para vendas em Conta Assinada (Fiado)." });
+      }
+      customer = await prisma.customer.findUnique({ where: { id: customerId } });
+      if (!customer) {
+        return res.status(404).json({ error: "Cliente selecionado não foi encontrado." });
+      }
+      if (!customer.active) {
+        return res.status(400).json({ error: "O cliente selecionado está inativo." });
+      }
+      
+      const newSignedBalance = Number((customer.signedBalance + signedAmount).toFixed(2));
+      if (newSignedBalance > customer.signedLimit) {
+        return res.status(400).json({
+          error: `Limite de fiado excedido para ${customer.name}! Limite: R$ ${customer.signedLimit.toFixed(2)}. Saldo devedor atual: R$ ${customer.signedBalance.toFixed(2)}. Tentativa de compra: R$ ${signedAmount.toFixed(2)}.`
+        });
+      }
+    }
+
     const paidOrder = await prisma.order.create({
       data: {
         tableId: originalOrder.tableId,
@@ -1144,9 +1363,29 @@ app.post('/api/orders/:id/partial-checkout', async (req, res) => {
         serviceFee: Number(serviceFee) || 0,
         couvert: Number(couvert) || 0,
         total: Number(total) || 0,
-        peopleCount: Number(peopleCount) || 1
+        peopleCount: Number(peopleCount) || 1,
+        customerId: customerId || null
       }
     });
+
+    if (signedAmount > 0 && customer) {
+      const newSignedBalance = Number((customer.signedBalance + signedAmount).toFixed(2));
+      await prisma.$transaction([
+        prisma.customer.update({
+          where: { id: customerId },
+          data: { signedBalance: newSignedBalance }
+        }),
+        prisma.customerTransaction.create({
+          data: {
+            customerId,
+            type: 'debit',
+            amount: signedAmount,
+            orderId: paidOrder.id,
+            description: `Venda Parcial Comanda/Pedido #${originalOrder.tableId ? 'Mesa' : 'Delivery'}`
+          }
+        })
+      ]);
+    }
 
     // 2. Transfere ou divide os itens
     for (const item of itemsToPay) {

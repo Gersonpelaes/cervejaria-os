@@ -89,6 +89,17 @@ function App() {
   const [transactionAmount, setTransactionAmount] = useState('');
   const [transactionDescription, setTransactionDescription] = useState('');
 
+  // Módulo de Clientes e Contas Assinadas (Fiado)
+  const [customers, setCustomers] = useState([]);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
+  const [repayData, setRepayData] = useState({ customer: null, amount: '', method: 'Dinheiro', description: '' });
+  const [isRepaymentsHistoryModalOpen, setIsRepaymentsHistoryModalOpen] = useState(false);
+  const [customerTransactions, setCustomerTransactions] = useState([]);
+  const [selectedCustomerForTransactions, setSelectedCustomerForTransactions] = useState(null);
+  const [selectedCustomerIdForCheckout, setSelectedCustomerIdForCheckout] = useState('');
+  const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false);
 
   // Configurações
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -197,13 +208,15 @@ function App() {
         fetch(`${API_URL}/settings/printer`),
         fetch(`${API_URL}/settings/restaurant`),
         fetch(`${API_URL}/orders/delivery`),
-        fetch(`${API_URL}/drivers`)
+        fetch(`${API_URL}/drivers`),
+        fetch(`${API_URL}/customers`)
       ]);
 
       setTables(await tablesRes.json());
       setKitchenOrders(await kitchenRes.json());
       setDeliveryOrders(await deliveryRes.json());
       setDrivers(await driversRes.json());
+      setCustomers(await customersRes.json());
       
       const currentCashReport = await currentCashRes.json();
       if (currentCashReport) {
@@ -621,6 +634,28 @@ function App() {
       alert("Valor inválido ou maior que o restante.");
       return;
     }
+
+    if (method === 'Conta Assinada') {
+      if (!selectedCustomerIdForCheckout) {
+        alert("Por favor, selecione um cliente para lançar em Conta Assinada / Fiado!");
+        return;
+      }
+      const customer = customers.find(c => c.id === selectedCustomerIdForCheckout);
+      if (!customer) {
+        alert("Cliente selecionado inválido!");
+        return;
+      }
+      const pendingSignedAmountInThisCheckout = paymentData.payments
+        .filter(p => p.method === 'Conta Assinada')
+        .reduce((acc, p) => acc + p.amount, 0);
+
+      const totalSignedAttempt = customer.signedBalance + pendingSignedAmountInThisCheckout + numAmount;
+      if (totalSignedAttempt > customer.signedLimit) {
+        alert(`Limite de fiado insuficiente! O limite de ${customer.name} é R$ ${customer.signedLimit.toFixed(2)} e o saldo devedor atual é R$ ${customer.signedBalance.toFixed(2)}. Tentativa de lançar mais R$ ${numAmount.toFixed(2)} (Total acumulado: R$ ${totalSignedAttempt.toFixed(2)}).`);
+        return;
+      }
+    }
+
     setPaymentData(prev => ({
       ...prev,
       payments: [...prev.payments, { method, amount: numAmount }]
@@ -654,7 +689,8 @@ function App() {
       couvert: paymentData.couvert,
       deliveryFee: currentOrder?.type === 'DELIVERY' ? Number(paymentData.deliveryFee || 0) : 0,
       total: calculateFinalTotal(),
-      peopleCount: paymentData.peopleCount || 1
+      peopleCount: paymentData.peopleCount || 1,
+      customerId: selectedCustomerIdForCheckout || null
     };
 
     if (isPartial) {
@@ -678,6 +714,7 @@ function App() {
 
       setIsPaymentModalOpen(false);
       setSelectedItemsForOp([]);
+      setSelectedCustomerIdForCheckout('');
       
       if (currentOrder.type === 'DELIVERY' || currentOrder.type === 'BALCAO') {
         setActiveTab('delivery');
@@ -1461,6 +1498,125 @@ function App() {
                                   </td>
                                 </tr>
                               ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Gestão de Clientes e Fiado */}
+                  <div className="settings-card" style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleCard('customers')}>
+                      <h3 style={{ margin: 0 }}>Gestão de Clientes e Contas Assinadas (Fiado) ({customers.length})</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button className="btn btn-primary" style={{ width: 'auto', padding: '10px 20px' }} onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCustomer({ name: '', phone: '', address: '', signedLimit: 500 });
+                          setIsCustomerModalOpen(true);
+                        }}>
+                          + Novo Cliente
+                        </button>
+                        {expandedCards.customers ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </div>
+                    </div>
+                    {expandedCards.customers && (
+                      <div style={{ marginTop: '16px' }}>
+                        {/* Ações Gerais de Clientes */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                          <input 
+                            type="text" 
+                            placeholder="Buscar cliente por nome ou telefone..." 
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            style={{ flex: 1, minWidth: '250px', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', fontSize: '14px' }} 
+                          />
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', padding: '10px 16px' }} onClick={() => {
+                              const list = customers.filter(c => c.active && c.phone).map(c => `${c.name} - ${c.phone}`).join('\n');
+                              navigator.clipboard.writeText(list);
+                              alert("Contatos copiados no formato:\nNome - Telefone");
+                            }}>
+                              📋 Copiar Contatos (WhatsApp)
+                            </button>
+                            <button className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', padding: '10px 16px' }} onClick={() => {
+                              const list = customers.filter(c => c.active && c.phone).map(c => c.phone.replace(/\D/g, '')).join(',');
+                              navigator.clipboard.writeText(list);
+                              alert("Apenas os números copiados separados por vírgula!");
+                            }}>
+                              💬 Copiar Apenas Números
+                            </button>
+                          </div>
+                        </div>
+
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                              <th style={{ padding: '12px' }}>Nome</th>
+                              <th style={{ padding: '12px' }}>Telefone</th>
+                              <th style={{ padding: '12px' }}>Limite de Crédito</th>
+                              <th style={{ padding: '12px' }}>Saldo Devedor (Fiado)</th>
+                              <th style={{ padding: '12px' }}>Disponível</th>
+                              <th style={{ padding: '12px', textAlign: 'right' }}>Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.phone && c.phone.includes(searchTerm))).length === 0 ? (
+                              <tr>
+                                <td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nenhum cliente cadastrado ou encontrado.</td>
+                              </tr>
+                            ) : (
+                              customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.phone && c.phone.includes(searchTerm))).map(c => {
+                                const avail = Math.max(0, c.signedLimit - c.signedBalance);
+                                return (
+                                  <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{c.name}</td>
+                                    <td style={{ padding: '12px' }}>{c.phone || <em style={{ color: 'var(--text-secondary)' }}>Não informado</em>}</td>
+                                    <td style={{ padding: '12px' }}>R$ {c.signedLimit.toFixed(2)}</td>
+                                    <td style={{ padding: '12px', color: c.signedBalance > 0 ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: c.signedBalance > 0 ? 'bold' : 'normal' }}>
+                                      R$ {c.signedBalance.toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '12px', color: 'var(--success)', fontWeight: 'bold' }}>R$ {avail.toFixed(2)}</td>
+                                    <td style={{ padding: '12px', textAlign: 'right' }}>
+                                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '12px', width: 'auto' }} onClick={() => {
+                                          setEditingCustomer(c);
+                                          setIsCustomerModalOpen(true);
+                                        }}>
+                                          Editar
+                                        </button>
+                                        <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '12px', width: 'auto', color: 'var(--success)', borderColor: 'var(--success)' }} onClick={() => {
+                                          setRepayData({ customer: c, amount: '', method: 'Dinheiro', description: '' });
+                                          setIsRepayModalOpen(true);
+                                        }}>
+                                          Amortizar (Pagar)
+                                        </button>
+                                        <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '12px', width: 'auto' }} onClick={async () => {
+                                          try {
+                                            const res = await fetch(`${API_URL}/customers/${c.id}/transactions`);
+                                            const txs = await res.json();
+                                            setCustomerTransactions(txs);
+                                            setSelectedCustomerForTransactions(c);
+                                            setIsRepaymentsHistoryModalOpen(true);
+                                          } catch (err) {
+                                            alert("Erro ao buscar extrato: " + err.message);
+                                          }
+                                        }}>
+                                          Ver Extrato
+                                        </button>
+                                        <button className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '12px', width: 'auto', color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={async () => {
+                                          if (confirm(`Deseja realmente desativar o cliente ${c.name}?`)) {
+                                            await fetch(`${API_URL}/customers/${c.id}`, { method: 'DELETE' });
+                                            fetchData();
+                                          }
+                                        }}>
+                                          Excluir
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
                             )}
                           </tbody>
                         </table>
@@ -2706,6 +2862,31 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn-close" onClick={() => setIsPaymentModalOpen(false)}>×</button>
               </div>
+
+              {/* Seleção de Cliente para Conta Assinada (Fiado) */}
+              <div style={{ background: 'var(--bg-surface-light)', padding: '12px', borderRadius: '8px', marginBottom: '16px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Vincular Cliente (Obrigatório para Conta Assinada)</span>
+                  <button className="btn btn-outline" style={{ padding: '2px 8px', fontSize: '11px', width: 'auto' }} onClick={() => setIsQuickCustomerModalOpen(true)}>
+                    + Novo Cliente
+                  </button>
+                </div>
+                <select
+                  value={selectedCustomerIdForCheckout}
+                  onChange={e => setSelectedCustomerIdForCheckout(e.target.value)}
+                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', fontSize: '14px' }}
+                >
+                  <option value="">-- Escolha o Cliente --</option>
+                  {customers.map(c => {
+                    const avail = Math.max(0, c.signedLimit - c.signedBalance);
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.name} (Saldo Dev: R$ {c.signedBalance.toFixed(2)} | Disp: R$ {avail.toFixed(2)})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
               
               <div style={{ flex: 1 }}>
                 <h3 style={{ marginBottom: '16px', color: 'var(--text-secondary)' }}>Falta Receber</h3>
@@ -2756,6 +2937,263 @@ function App() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAIS DE CLIENTES E CONTAS ASSINADAS (FIADO) */}
+      
+      {/* 1. Modal de Cadastro / Edição Geral */}
+      {isCustomerModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>{editingCustomer?.id ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+              <button className="btn-close" onClick={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); }}>×</button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const payload = {
+                name: fd.get('name'),
+                phone: fd.get('phone'),
+                address: fd.get('address'),
+                signedLimit: Number(fd.get('signedLimit'))
+              };
+              if (editingCustomer?.id) {
+                payload.id = editingCustomer.id;
+              }
+              
+              try {
+                const res = await fetch(`${API_URL}/customers`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                  alert(editingCustomer?.id ? "Cliente atualizado!" : "Cliente cadastrado!");
+                  setIsCustomerModalOpen(false);
+                  setEditingCustomer(null);
+                  fetchData();
+                } else {
+                  const data = await res.json();
+                  alert("Erro ao salvar cliente: " + data.error);
+                }
+              } catch (err) {
+                alert("Erro ao salvar: " + err.message);
+              }
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Nome do Cliente *</label>
+                  <input type="text" name="name" defaultValue={editingCustomer?.name || ''} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Telefone (WhatsApp)</label>
+                  <input type="text" name="phone" defaultValue={editingCustomer?.phone || ''} placeholder="(11) 99999-9999" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Endereço Completo</label>
+                  <input type="text" name="address" defaultValue={editingCustomer?.address || ''} placeholder="Ex: Av Paulista, 1000 - Apto 21" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Limite de Crédito Fiado (R$)</label>
+                  <input type="number" name="signedLimit" defaultValue={editingCustomer?.signedLimit || 500} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                
+                <button type="submit" className="btn btn-primary" style={{ padding: '12px' }}>
+                  Salvar Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Modal de Cadastro Rápido no Checkout */}
+      {isQuickCustomerModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2>Cadastro Rápido de Cliente</h2>
+              <button className="btn-close" onClick={() => setIsQuickCustomerModalOpen(false)}>×</button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const name = fd.get('name');
+              const phone = fd.get('phone');
+              const address = fd.get('address');
+              const signedLimit = Number(fd.get('signedLimit')) || 500;
+              
+              if (!name) { alert("Nome é obrigatório!"); return; }
+              
+              try {
+                const res = await fetch(`${API_URL}/customers`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name, phone, address, signedLimit })
+                });
+                
+                if (res.ok) {
+                  const newCust = await res.json();
+                  alert("Cliente cadastrado com sucesso!");
+                  setIsQuickCustomerModalOpen(false);
+                  fetchData();
+                  setSelectedCustomerIdForCheckout(newCust.id);
+                } else {
+                  const data = await res.json();
+                  alert("Erro ao cadastrar: " + data.error);
+                }
+              } catch (err) {
+                alert("Erro de rede: " + err.message);
+              }
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Nome *</label>
+                  <input type="text" name="name" required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>WhatsApp/Telefone</label>
+                  <input type="text" name="phone" placeholder="(11) 99999-9999" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Endereço</label>
+                  <input type="text" name="address" placeholder="Rua, Número, Bairro" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Limite Fiado (R$)</label>
+                  <input type="number" name="signedLimit" defaultValue="500" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                
+                <button type="submit" className="btn btn-primary" style={{ marginTop: '16px', padding: '12px' }}>
+                  Confirmar Cadastro
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Modal de Registrar Amortização / Recebimento de Fiado */}
+      {isRepayModalOpen && repayData.customer && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2>Registrar Recebimento de Fiado</h2>
+              <button className="btn-close" onClick={() => setIsRepayModalOpen(false)}>×</button>
+            </div>
+            <div style={{ padding: '12px', background: 'var(--bg-dark)', borderRadius: '8px', margin: '16px 0', fontSize: '14px' }}>
+              <div><strong>Cliente:</strong> {repayData.customer.name}</div>
+              <div><strong>Saldo Devedor Atual:</strong> R$ {repayData.customer.signedBalance.toFixed(2)}</div>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const payload = {
+                amount: Number(fd.get('amount')),
+                method: fd.get('method'),
+                description: fd.get('description')
+              };
+              
+              if (payload.amount <= 0) { alert("Valor inválido!"); return; }
+              
+              try {
+                const res = await fetch(`${API_URL}/customers/${repayData.customer.id}/repay`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                  alert("Recebimento registrado e saldo atualizado!");
+                  setIsRepayModalOpen(false);
+                  fetchData();
+                } else {
+                  const data = await res.json();
+                  alert("Erro ao receber: " + data.error);
+                }
+              } catch (err) {
+                alert("Erro ao conectar ao servidor: " + err.message);
+              }
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Valor Recebido (R$) *</label>
+                  <input type="number" step="0.01" name="amount" defaultValue={repayData.customer.signedBalance.toFixed(2)} required style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--bg-dark)', color: 'white', fontSize: '16px', fontWeight: 'bold' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Forma de Recebimento *</label>
+                  <select name="method" required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }}>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="PIX">PIX</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Observação / Descrição</label>
+                  <input type="text" name="description" placeholder="Ex: Amortização parcial de conta assinada" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', marginTop: '4px' }} />
+                </div>
+                
+                <button type="submit" className="btn btn-primary" style={{ padding: '12px', fontSize: '15px' }}>
+                  Confirmar Recebimento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Modal de Extrato do Cliente */}
+      {isRepaymentsHistoryModalOpen && selectedCustomerForTransactions && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '650px' }}>
+            <div className="modal-header">
+              <h2>Extrato Detalhado: {selectedCustomerForTransactions.name}</h2>
+              <button className="btn-close" onClick={() => setIsRepaymentsHistoryModalOpen(false)}>×</button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', margin: '16px 0', padding: '16px', background: 'var(--bg-dark)', borderRadius: '8px', fontSize: '14px' }}>
+              <div><strong>Limite de Crédito:</strong> R$ {selectedCustomerForTransactions.signedLimit.toFixed(2)}</div>
+              <div><strong>Saldo Devedor Atual:</strong> R$ {selectedCustomerForTransactions.signedBalance.toFixed(2)}</div>
+            </div>
+
+            <h3 style={{ marginBottom: '12px' }}>Histórico de Lançamentos</h3>
+            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                    <th style={{ padding: '8px' }}>Data/Hora</th>
+                    <th style={{ padding: '8px' }}>Tipo</th>
+                    <th style={{ padding: '8px' }}>Valor</th>
+                    <th style={{ padding: '8px' }}>Descrição</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nenhuma transação registrada.</td>
+                    </tr>
+                  ) : (
+                    customerTransactions.map(tx => (
+                      <tr key={tx.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px' }}>{new Date(tx.createdAt).toLocaleString()}</td>
+                        <td style={{ padding: '8px' }}>
+                          <span className="status-badge" style={{ background: tx.type === 'debit' ? 'var(--danger)' : 'var(--success)', color: '#fff', fontSize: '11px', padding: '2px 6px' }}>
+                            {tx.type === 'debit' ? 'DÉBITO (-)' : 'CRÉDITO (+)'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px', fontWeight: 'bold', color: tx.type === 'debit' ? 'var(--danger)' : 'var(--success)' }}>
+                          R$ {tx.amount.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '8px' }}>{tx.description || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

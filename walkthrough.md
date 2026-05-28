@@ -32,7 +32,7 @@ Desenvolvemos um sistema híbrido de impressão direta automatizada:
 
 ---
 
-## 2. Setorização de Impressão (`CAIXA`, `COZINHA`, `BAR`) 🎯
+## 3. Setorização de Impressão (`CAIXA`, `COZINHA`, `BAR`) 🎯
 Dividimos os fluxos de trabalho e produção do restaurante em três setores independentes de impressão:
 1. **💵 Caixa / Balcão (CAIXA)**: Focado em extratos de pré-conta, conferência de mesa, comprovantes de sangria, suprimento e recibo final de pagamento da venda.
 2. **🍳 Cozinha de Pratos (COZINHA)**: Destinado à impressão dos pratos, pizzas, petiscos e entradas quentes em ordem de entrada.
@@ -48,7 +48,7 @@ Dividimos os fluxos de trabalho e produção do restaurante em três setores ind
 
 ---
 
-## 3. Cadastro de Produtos com Setor de Impressão 📋
+## 4. Cadastro de Produtos com Setor de Impressão 📋
 * **Campo de Setor**: Adicionamos o campo `printSector` (`String?`) à tabela `Product` no banco de dados SQLite.
 * **Dropdown no Modal**: Adicionamos um menu `<select>` na aba "Dados Básicos" do cadastro/edição de produtos no frontend:
   * **Caixa (Padrão)**: Impressão padrão no balcão caso não seja informada.
@@ -58,7 +58,7 @@ Dividimos os fluxos de trabalho e produção do restaurante em três setores ind
 
 ---
 
-## 4. Menu de Configurações de Impressão Premium ⚙️
+## 5. Menu de Configurações de Impressão Premium ⚙️
 Criamos um formulário de configurações robusto na Retaguarda (Aba de Configurações):
 * **Três Interruptores Gerais**:
   1. `Habilitar Impressão Automática (Direta sem diálogo)` (Checkbox).
@@ -71,15 +71,15 @@ Criamos um formulário de configurações robusto na Retaguarda (Aba de Configur
 
 ---
 
-## 5. Perguntar Sempre no Fechamento de Mesas e Pré-Conta 💬
+## 6. Perguntar Sempre no Fechamento de Mesas e Pré-Conta 💬
 Implementamos proteções para economizar papel térmico e alinhar a operação:
 * **Confirmação de Pré-Conta**: Ao solicitar a emissão da pré-conferência antes do recebimento, o garçom recebe um pop-up de confirmação: *"Deseja imprimir a Pré-Conta/Conferência de Conta?"*. Se cancelado, a operação prossegue sem imprimir.
 * **Confirmação no Fechamento**: Ao concluir o pagamento de uma comanda ou mesa, caso a opção esteja ativa, o PDV pergunta explicitamente: *"Deseja imprimir o comprovante de pagamento e fechamento da mesa?"*.
-* **Relatório de Fechamento Controlado**: Na finalização do turno de caixa (Retiradas/Fechamento do Operador), a auditoria física respeita estritamente o interruptor do painel. Se desativado, o backend bloqueia a impressão física e retorna um aviso amigável.
+* **Relatório de Fechamento Controlled**: Na finalização do turno de caixa (Retiradas/Fechamento do Operador), a auditoria física respeita estritamente o interruptor do painel. Se desativado, o backend bloqueia a impressão física e retorna um aviso amigável.
 
 ---
 
-## 6. Assistente de Instalação Gráfico e Seguro (Instalador Visual Setup) 🛠️
+## 7. Assistente de Instalação Gráfico e Seguro (Instalador Visual Setup) 🛠️
 Para proporcionar uma experiência profissional e extremamente amigável, idêntica aos instaladores de grandes softwares do mercado, desenvolvemos um **Assistente de Instalação Visual** que elimina completamente a dependência de telas pretas e prompts de comando complicados:
 * **Launcher Blindado (`instalar.bat`)**:
   * O `instalar.bat` serve agora como um atalho de carregamento ultra-simples que apenas dispara a interface visual em PowerShell.
@@ -109,7 +109,7 @@ Para proporcionar uma experiência profissional e extremamente amigável, idênt
   * O instalador agora tenta primeiro o utilitário nativo de rede `curl` do Windows para baixar o Node.js em computadores novos. Caso falhe, usa o PowerShell como fallback alternativo, aumentando drasticamente a taxa de sucesso online.
 * **Fallback Absoluto do Node.exe (Zero-Reboot)**:
   * Adicionamos uma rotina nos scripts de inicialização que detecta caminhos absolutos do executável do Node.
-  * Se o Node.js acabar de ser instalado e o Windows ainda não recarregou as variáveis globais (`PATH`) na sessão ativa, os scripts detectam a presença do Node em `C:\Program Files\nodejs` e o iniciam diretamente pelo caminho absoluto, permitindo que o sistema funcione **imediatamente após a instalação** sem necessidade de reiniciar a máquina ou o terminal!
+  * Se o Node.js acabar de ser instalado e o Windows ainda não recarregou as variáveis globais (`PATH`) na sessão ativa, os scripts detectam a presença do Node em `C:\Program Files\nodejs` e o iniciam diretamente pelo caminho absoluto, permitindo que o sistema funcione **imeditamente após a instalação** sem necessidade de reiniciar a máquina ou o terminal!
 * **Atraso de Abertura do Navegador (Fim do erro connection refused / chromewebdata)**:
   * O erro `chrome-error://chromewebdata/` acontecia porque o navegador abria milissegundos *antes* do servidor Node conseguir concluir o carregamento inicial (seeding) do banco de dados e escutar na porta `3001`.
   * Adicionamos um atraso inteligente de 3 segundos (`timeout /t 3` no `iniciar.bat` e `WScript.Sleep 3000` no `iniciar.vbs`) para dar tempo ao servidor de carregar completamente o banco antes de abrir o navegador, garantindo que o operador nunca caia em uma tela de erro!
@@ -120,8 +120,28 @@ Para proporcionar uma experiência profissional e extremamente amigável, idênt
 
 ---
 
-## 7. Validação e Compilação
-1. **Sucesso no Build**: O frontend React compila perfeitamente sem erros.
-2. **Resiliência do Instalador**: Todos os scripts estão blindados e prontos para implantação em produção.
-3. **Servidor em Segundo Plano**: O servidor Node está ativo e gerenciando transações e conexões dinamicamente na porta unificada `3001`!
+## 8. Cadastro de Clientes, Contas Assinadas (Fiado) e Propaganda WhatsApp 👥💳
 
+Implementamos um módulo financeiro e de relacionamento com o cliente totalmente integrado, completo e seguro, facilitando o controle de vendas fiadas e proporcionando ferramentas de marketing para fidelização de clientes.
+
+### Principais Recursos Adicionados:
+1. **Cadastro Completo de Clientes (Retaguarda)**:
+   * Novo painel elegante e colapsável na Retaguarda: **"Gestão de Clientes e Contas Assinadas (Fiado)"**.
+   * Formulário com Nome, WhatsApp/Telefone, Endereço e Limite de Crédito Fiado.
+   * Exclusão lógica (desativação temporária) de clientes.
+2. **Controle de Limites e Vendas em Conta Assinada**:
+   * O método de pagamento **"Conta Assinada"** foi adicionado aos métodos e integrado ao banco de dados.
+   * No Modal de Checkout (Mesa, Delivery ou Balcão), caso a opção "Conta Assinada" seja adicionada, o sistema exibe uma caixa de seleção contendo os clientes cadastrados.
+   * Mostra em tempo real o saldo devedor e o limite de crédito disponível para o cliente.
+   * **Bloqueio Automático Inteligente**: Se o operador tentar lançar uma venda fiada que ultrapasse o limite de crédito disponível para o cliente, o sistema bloqueia e exibe um aviso em vermelho explicando o motivo.
+3. **Cadastro Rápido no Fluxo de Checkout**:
+   * Caso o cliente não esteja previamente cadastrado na hora da venda, o operador de caixa pode clicar no botão **"+ Novo Cliente"** na própria tela de checkout.
+   * Isso abre um formulário simplificado para cadastrar o cliente na hora e já associá-lo à Conta Assinada atual sem ter que fechar ou perder o andamento da venda!
+4. **Auditoria e Extrato Detalhado do Cliente**:
+   * Cada cliente possui um extrato financeiro histórico, listando compras (Débitos) e amortizações (Créditos) com data, hora, tipo e descrição.
+5. **Integração Inteligente com a Gaveta de Caixa**:
+   * Ao receber a amortização/pagamento da dívida de fiado na administração, caso o operador de caixa selecione como forma de pagamento **Dinheiro** ou **PIX**, o sistema gera automaticamente uma transação do tipo **Suprimento** no turno de caixa aberto, com uma descrição amigável (ex: *"Recebimento Fiado: João"*). Isso garante que no fechamento analítico de caixa o saldo em gaveta física esteja 100% conciliado!
+6. **Exportador para WhatsApp Marketing (Propaganda)**:
+   * Dois botões de ação na gestão de clientes na Retaguarda permitem:
+     * *Copiar Contatos (WhatsApp)*: Copia uma lista limpa no formato `Nome - Telefone` para fácil visualização ou bloco de notas.
+     * *Copiar Apenas Números*: Copia os telefones puros e limpos separados por vírgula, perfeitos para colar em ferramentas de envio de mensagens em lote ou listas de transmissão para propagandas de promoção.

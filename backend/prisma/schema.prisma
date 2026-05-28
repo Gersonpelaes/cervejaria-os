@@ -108,6 +108,9 @@ model Order {
   table         Table?          @relation(fields: [tableId], references: [id])
   status        String          @default("open") // open, paid, cancelled
   
+  customerId      String?
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  
   // Módulo de Delivery & Balcão
   type            String        @default("MESA") // MESA, DELIVERY, BALCAO
   customerName    String?
@@ -186,4 +189,29 @@ model Driver {
   phone  String?
   active Boolean @default(true)
   orders Order[]
+}
+
+model Customer {
+  id            String                 @id @default(uuid())
+  name          String
+  phone         String?
+  address       String?
+  signedLimit   Float                  @default(500)
+  signedBalance Float                  @default(0)
+  active        Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  
+  orders        Order[]
+  transactions  CustomerTransaction[]
+}
+
+model CustomerTransaction {
+  id          String   @id @default(uuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  type        String   // "debit" ou "credit"
+  amount      Float
+  orderId     String?
+  description String?
+  createdAt   DateTime @default(now())
 }
