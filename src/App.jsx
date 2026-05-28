@@ -3855,7 +3855,7 @@ function App() {
                         </style>
                       </head>
                       <body>
-                        <pre>\${printerPreviewText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                        <pre>${printerPreviewText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                         <script>
                           window.onload = function() {
                             window.print();
