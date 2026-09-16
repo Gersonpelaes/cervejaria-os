@@ -43,12 +43,6 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
             return `${d}/${m}/${y}`;
         };
 
-        const printWindow = window.open('', '_blank', 'width=400,height=400');
-        if (!printWindow) {
-            alert('Por favor, permita pop-ups para imprimir a etiqueta.');
-            return;
-        }
-
         const html = `
             <!DOCTYPE html>
             <html>
@@ -126,18 +120,35 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                 <div class="footer">
                     USO INTERNO
                 </div>
-                <script>
-                    window.onload = () => {
-                        window.print();
-                        setTimeout(() => window.close(), 500);
-                    };
-                </script>
             </body>
             </html>
         `;
 
-        printWindow.document.write(html);
-        printWindow.document.close();
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+
+        const printDoc = iframe.contentWindow?.document;
+        if (printDoc) {
+            printDoc.open();
+            printDoc.write(html);
+            printDoc.close();
+            
+            setTimeout(() => {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 1000);
+            }, 300);
+        } else {
+            alert('Erro ao gerar impressão da etiqueta.');
+        }
     };
 
     return (
