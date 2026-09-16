@@ -4,7 +4,8 @@ import { collection, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc
 import { db, BASE_PATH } from '../services/firebaseConfig';
 import { Order, Item, StockItem, AppConfig, ChatMessage, DailyProduction } from '../types';
 import { Button, Input, Select, Card, Modal } from '../components/UI';
-import { Trash2, AlertTriangle, MessageCircle, Check, Plus, Send, Truck, CheckCircle, ShoppingCart, ClipboardCheck } from 'lucide-react';
+import { Trash2, AlertTriangle, MessageCircle, Check, Plus, Send, Truck, CheckCircle, ShoppingCart, ClipboardCheck, Printer } from 'lucide-react';
+import { LabelPrinterModal } from '../components/LabelPrinterModal';
 
 interface Props {
     companyId: string;
@@ -21,6 +22,9 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
     const [newProductionTaskName, setNewProductionTaskName] = useState('');
     const [productionPrompt, setProductionPrompt] = useState<{ id: string, name: string } | null>(null);
     const [scheduleForm, setScheduleForm] = useState({ quantity: '', unit: '', date: new Date().toLocaleDateString('en-CA') });
+    
+    // Etiqueta de Validade State
+    const [labelPrinterProps, setLabelPrinterProps] = useState<{ isOpen: boolean, productName?: string }>({ isOpen: false });
 
     const [newItem, setNewItem] = useState({ name: '', quantity: '', unit: '', category: '' });
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
@@ -569,9 +573,19 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
 
             {activeModule === 'production' && (
                 <div className="space-y-6 animate-in fade-in max-w-2xl mx-auto">
-                    <Button variant="secondary" onClick={() => setActiveModule('selection')} className="mb-4">
-                        ← Voltar ao Início
-                    </Button>
+                    <div className="flex justify-between items-center mb-4">
+                        <Button variant="secondary" onClick={() => setActiveModule('selection')}>
+                            ← Voltar ao Início
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => setLabelPrinterProps({ isOpen: true })}
+                        >
+                            <Printer className="w-4 h-4" />
+                            Gerar Etiqueta
+                        </Button>
+                    </div>
                     <Card title="Checklist de Produção">
                         <form onSubmit={handleAddProductionTask} className="flex gap-2 mb-6">
                             <Input 
@@ -591,19 +605,32 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
                                     const effectiveType = t.type || config.productionTasks?.find(ct => ct.name === t.name && ct.sectorId === user.sectorId)?.type || 'task';
                                     return (
                                     <li key={t.id} className={`flex justify-between items-center p-4 rounded-lg border ${t.status === 'done' ? 'bg-gray-50 border-gray-200' : 'bg-white border-blue-200 shadow-sm'}`}>
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-4 flex-1">
                                             <button 
                                                 onClick={() => handleToggleProductionTask(t.id, t.status, effectiveType, t.name)}
                                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-colors ${t.status === 'done' ? 'bg-green-500 border-green-500 text-white' : (t.status === 'needs_production' ? 'bg-amber-100 border-amber-300 text-amber-500' : 'border-gray-300 hover:border-blue-500 text-transparent hover:text-blue-500')}`}
                                             >
                                                 <Check className="w-5 h-5 flex-shrink-0" />
                                             </button>
-                                            <div>
-                                                <span className={`font-medium ${t.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
-                                                    {t.name}
-                                                    {effectiveType === 'production' && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Produção</span>}
-                                                    {t.status === 'needs_production' && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1 rounded">Agendado</span>}
-                                                </span>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`font-medium ${t.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
+                                                        {t.name}
+                                                    </span>
+                                                    {effectiveType === 'production' && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Produção</span>}
+                                                    {t.status === 'needs_production' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1 rounded">Agendado</span>}
+                                                    
+                                                    {effectiveType === 'production' && t.status === 'done' && (
+                                                        <button 
+                                                            onClick={() => setLabelPrinterProps({ isOpen: true, productName: t.name })}
+                                                            className="ml-auto text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-xs"
+                                                            title="Imprimir Etiqueta"
+                                                        >
+                                                            <Printer className="w-4 h-4" />
+                                                            <span className="hidden sm:inline">Etiqueta</span>
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 <div className="text-xs text-gray-500 mt-1">
                                                     {t.addedBy === 'buyer' ? 'Fixa' : 'Extra'} 
                                                     {t.status === 'done' && t.operatorName && ` • Finalizado por ${t.operatorName}`}
@@ -897,6 +924,11 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
                     </div>
                 </div>
             </Modal>
+            <LabelPrinterModal 
+                isOpen={labelPrinterProps.isOpen} 
+                onClose={() => setLabelPrinterProps({ isOpen: false })} 
+                initialProductName={labelPrinterProps.productName} 
+            />
         </div>
     );
 };

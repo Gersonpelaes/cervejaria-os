@@ -6,8 +6,9 @@ import { AppConfig, Order, StockItem, BuyerSubView, ChatMessage, Bill, StockCoun
 import { Button, Input, Select, Card, Modal } from '../components/UI';
 import {
     LayoutDashboard, Package, FileBarChart, Settings, Share2,
-    Bell, ChevronDown, Plus, Trash, MessageCircle, Send, Upload, Edit3, Save, DollarSign, CheckCircle, FileText, Clock, Camera, Download, ExternalLink, Trash2, Database, Eye, Loader2, ClipboardCheck, TrendingUp, Truck, AlertTriangle, AlertCircle, BarChart3, ShoppingCart, RefreshCw, CheckSquare
+    Bell, ChevronDown, Plus, Trash, MessageCircle, Send, Upload, Edit3, Save, DollarSign, CheckCircle, FileText, Clock, Camera, Download, ExternalLink, Trash2, Database, Eye, Loader2, ClipboardCheck, TrendingUp, Truck, AlertTriangle, AlertCircle, BarChart3, ShoppingCart, RefreshCw, CheckSquare, Printer
 } from 'lucide-react';
+import { LabelPrinterModal } from '../components/LabelPrinterModal';
 
 interface Props {
     companyId: string;
@@ -57,6 +58,9 @@ const BuyerView: React.FC<Props> = ({ companyId, companyCode, config, stockItems
     const [chatOrderDocId, setChatOrderDocId] = useState<string | null>(null);
     const [chatMessage, setChatMessage] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
+
+    // Etiqueta de Validade State
+    const [labelPrinterProps, setLabelPrinterProps] = useState<{ isOpen: boolean, productName?: string }>({ isOpen: false });
 
     // Independent Purchase Modal State (CART)
     const [independentModalOpen, setIndependentModalOpen] = useState(false);
@@ -2822,6 +2826,14 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                         Agendar Produção
                     </button>
                 </div>
+                <Button 
+                    variant="primary" 
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => setLabelPrinterProps({ isOpen: true })}
+                >
+                    <Printer className="w-4 h-4" />
+                    Gerar Etiqueta
+                </Button>
             </div>
 
             {activeTab === 'progress' && (
@@ -2866,16 +2878,26 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                                                 const effectiveType = t.type || config.productionTasks?.find(ct => ct.name === t.name && ct.sectorId === dp.sectorId)?.type || 'task';
                                                 return (
                                                 <div key={t.id} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-1">
                                                         <CheckCircle className={`w-4 h-4 ${t.status === 'done' ? 'text-green-500' : (t.status === 'needs_production' ? 'text-amber-500' : 'text-gray-300')}`} />
                                                         <span className={t.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-800'}>
                                                             {t.name}
                                                             {effectiveType === 'production' && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Produção</span>}
                                                             {t.status === 'needs_production' && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1 rounded">Falta Produzir</span>}
                                                         </span>
+                                                        
+                                                        {effectiveType === 'production' && t.status === 'done' && (
+                                                            <button 
+                                                                onClick={() => setLabelPrinterProps({ isOpen: true, productName: t.name })}
+                                                                className="ml-auto text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-xs"
+                                                                title="Imprimir Etiqueta"
+                                                            >
+                                                                <Printer className="w-4 h-4" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     {t.status === 'done' && t.operatorName && (
-                                                        <span className="text-[10px] text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
+                                                        <span className="text-[10px] text-gray-400 bg-gray-200 px-2 py-0.5 rounded ml-2 whitespace-nowrap">
                                                             {t.operatorName}
                                                         </span>
                                                     )}
@@ -3065,6 +3087,12 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                 </div>
             </Card>
             )}
+            
+            <LabelPrinterModal 
+                isOpen={labelPrinterProps.isOpen} 
+                onClose={() => setLabelPrinterProps({ isOpen: false })} 
+                initialProductName={labelPrinterProps.productName} 
+            />
         </div>
     );
 }
