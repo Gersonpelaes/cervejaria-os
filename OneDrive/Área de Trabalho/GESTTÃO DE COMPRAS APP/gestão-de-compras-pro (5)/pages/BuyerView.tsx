@@ -3117,7 +3117,7 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                                     onClick={async () => {
                                         if (confirm('Tem certeza que deseja excluir este template?')) {
                                             const newTemplates = config.labelTemplates!.filter(x => x.id !== t.id);
-                                            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/config`, 'main'), {
+                                            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/app_config`, 'main'), {
                                                 labelTemplates: newTemplates
                                             });
                                         }

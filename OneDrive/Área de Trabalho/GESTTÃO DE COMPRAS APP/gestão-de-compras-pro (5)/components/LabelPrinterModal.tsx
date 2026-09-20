@@ -98,7 +98,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                 observations
             };
             
-            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/config`, 'main'), {
+            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/app_config`, 'main'), {
                 labelTemplates: arrayUnion(newTemplate)
             });
             
