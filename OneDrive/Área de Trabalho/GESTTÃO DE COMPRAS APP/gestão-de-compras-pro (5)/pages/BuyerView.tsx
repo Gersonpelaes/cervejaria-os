@@ -3092,6 +3092,8 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                 isOpen={labelPrinterProps.isOpen} 
                 onClose={() => setLabelPrinterProps({ isOpen: false })} 
                 initialProductName={labelPrinterProps.productName} 
+                config={config}
+                companyId={companyId}
             />
         </div>
     );

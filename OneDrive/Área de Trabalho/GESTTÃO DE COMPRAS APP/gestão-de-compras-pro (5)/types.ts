@@ -6,6 +6,15 @@ export interface Company {
     buyerPassword: string;
 }
 
+export interface LabelTemplate {
+    id: string;
+    name: string;
+    validityDays: number;
+    storageForm?: string;
+    ingredients?: string;
+    observations?: string;
+}
+
 export interface AppConfig {
     restaurants: { id: string; name: string }[];
     sectors: { id: string; name: string }[];
@@ -13,6 +22,7 @@ export interface AppConfig {
     categories: { id: string; name: string }[];
     admPasswords?: Record<string, string>; // { restaurantId: "password" }
     productionTasks?: { id: string; restaurantId: string; sectorId: string; name: string; type?: 'task' | 'production' }[];
+    labelTemplates?: LabelTemplate[];
 }
 
 export interface Item {

@@ -2,18 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input } from './UI';
 import { Printer } from 'lucide-react';
 
+import { AppConfig, LabelTemplate } from '../types';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db, BASE_PATH } from '../services/firebaseConfig';
+import { Save } from 'lucide-react';
+
 interface LabelPrinterModalProps {
     isOpen: boolean;
     onClose: () => void;
     initialProductName?: string;
+    config?: AppConfig;
+    companyId?: string;
 }
 
-export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, onClose, initialProductName }) => {
+export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, onClose, initialProductName, config, companyId }) => {
     const [productName, setProductName] = useState('');
     const [manufactureDate, setManufactureDate] = useState('');
     const [expirationDate, setExpirationDate] = useState('');
     const [responsible, setResponsible] = useState('');
     const [validityDays, setValidityDays] = useState<number | ''>('');
+    const [storageForm, setStorageForm] = useState('');
+    const [ingredients, setIngredients] = useState('');
+    const [observations, setObservations] = useState('');
+    
+    // Templates
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
     useEffect(() => {
         if (isOpen) {
@@ -22,9 +35,70 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
             setManufactureDate(today);
             setExpirationDate('');
             setValidityDays('');
+            setStorageForm('');
+            setIngredients('');
+            setObservations('');
+            setSelectedTemplateId('');
             setResponsible(localStorage.getItem('userName') || ''); // Attempt to prefill if stored somewhere, else empty
+            
+            // Try to auto-select template if name matches exactly
+            if (initialProductName && config?.labelTemplates) {
+                const match = config.labelTemplates.find(t => t.name.toLowerCase() === initialProductName.toLowerCase());
+                if (match) {
+                    handleSelectTemplate(match.id, match);
+                }
+            }
         }
-    }, [isOpen, initialProductName]);
+    }, [isOpen, initialProductName, config]);
+
+    const handleSelectTemplate = (id: string, templateObj?: LabelTemplate) => {
+        setSelectedTemplateId(id);
+        const template = templateObj || config?.labelTemplates?.find(t => t.id === id);
+        if (template) {
+            setProductName(template.name);
+            setValidityDays(template.validityDays);
+            setStorageForm(template.storageForm || '');
+            setIngredients(template.ingredients || '');
+            setObservations(template.observations || '');
+            
+            const today = new Date().toISOString().split('T')[0];
+            setManufactureDate(today);
+            
+            if (template.validityDays > 0) {
+                const date = new Date(today);
+                date.setDate(date.getDate() + template.validityDays);
+                setExpirationDate(date.toISOString().split('T')[0]);
+            }
+        }
+    };
+
+    const handleSaveTemplate = async () => {
+        if (!config || !companyId || !productName || !validityDays) {
+            alert('Preencha o nome do produto e a validade (dias) para salvar o template.');
+            return;
+        }
+        
+        try {
+            const newTemplate: LabelTemplate = {
+                id: crypto.randomUUID(),
+                name: productName,
+                validityDays: Number(validityDays),
+                storageForm,
+                ingredients,
+                observations
+            };
+            
+            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/config`, 'main'), {
+                labelTemplates: arrayUnion(newTemplate)
+            });
+            
+            alert('Template salvo com sucesso!');
+            setSelectedTemplateId(newTemplate.id);
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao salvar template.');
+        }
+    };
 
     // Calculate expiration date based on validity days
     useEffect(() => {
@@ -117,6 +191,25 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                     <span class="value">${responsible.toUpperCase()}</span>
                 </div>
                 
+                ${storageForm ? `
+                <div class="row">
+                    <span class="label">ARMAZ.:</span>
+                    <span class="value" style="font-size: 9px;">${storageForm}</span>
+                </div>
+                ` : ''}
+
+                ${ingredients ? `
+                <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
+                    <span class="label">INGR.:</span> ${ingredients}
+                </div>
+                ` : ''}
+
+                ${observations ? `
+                <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
+                    <span class="label">OBS.:</span> ${observations}
+                </div>
+                ` : ''}
+                
                 <div class="footer">
                     USO INTERNO
                 </div>
@@ -154,6 +247,22 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Gerar Etiqueta de Validade">
             <div className="space-y-4">
+                {config && config.labelTemplates && config.labelTemplates.length > 0 && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-1">Templates Salvos</label>
+                        <select 
+                            className="w-full px-3 py-2 border border-brand-300 bg-brand-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            value={selectedTemplateId}
+                            onChange={(e) => handleSelectTemplate(e.target.value)}
+                        >
+                            <option value="">-- Selecione uma preparação --</option>
+                            {config.labelTemplates.map(t => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                
                 <Input 
                     label="Produto / Receita" 
                     value={productName} 
@@ -194,16 +303,42 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                         placeholder="Iniciais ou Nome"
                     />
                 </div>
+                
+                <div className="grid grid-cols-1 gap-4">
+                    <Input 
+                        label="Forma de Armazenamento" 
+                        value={storageForm} 
+                        onChange={e => setStorageForm(e.target.value)} 
+                        placeholder="Ex: Geladeira (4°C), Freezer, etc"
+                    />
+                    <Input 
+                        label="Ingredientes (opcional)" 
+                        value={ingredients} 
+                        onChange={e => setIngredients(e.target.value)} 
+                        placeholder="Ex: Tomate, cebola, alho..."
+                    />
+                    <Input 
+                        label="Observações (opcional)" 
+                        value={observations} 
+                        onChange={e => setObservations(e.target.value)} 
+                        placeholder="Ex: Sem glúten, etc."
+                    />
+                </div>
 
-                <div className="pt-4 border-t border-gray-100 flex justify-end gap-3">
-                    <Button variant="outline" onClick={onClose}>Cancelar</Button>
-                    <Button 
-                        onClick={handlePrint}
-                        disabled={!productName || !manufactureDate || !expirationDate}
-                    >
-                        <Printer className="w-4 h-4" />
-                        Imprimir Etiqueta
+                <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between gap-3">
+                    <Button variant="outline" onClick={handleSaveTemplate} disabled={!productName || !validityDays || !config}>
+                        <Save className="w-4 h-4 mr-2" /> Salvar Template
                     </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={onClose}>Cancelar</Button>
+                        <Button 
+                            onClick={handlePrint}
+                            disabled={!productName || !manufactureDate || !expirationDate}
+                        >
+                            <Printer className="w-4 h-4" />
+                            Imprimir
+                        </Button>
+                    </div>
                 </div>
             </div>
         </Modal>

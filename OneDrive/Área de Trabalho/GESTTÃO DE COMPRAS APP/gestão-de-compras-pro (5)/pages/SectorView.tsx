@@ -928,6 +928,8 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
                 isOpen={labelPrinterProps.isOpen} 
                 onClose={() => setLabelPrinterProps({ isOpen: false })} 
                 initialProductName={labelPrinterProps.productName} 
+                config={config}
+                companyId={companyId}
             />
         </div>
     );
