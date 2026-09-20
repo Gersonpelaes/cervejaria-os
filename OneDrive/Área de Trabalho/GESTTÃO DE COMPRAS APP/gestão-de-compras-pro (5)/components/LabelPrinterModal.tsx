@@ -80,17 +80,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
             }
         }
     };
-            
-            const today = new Date().toISOString().split('T')[0];
-            setManufactureDate(today);
-            
-            if (template.validityDays > 0) {
-                const date = new Date(today);
-                date.setDate(date.getDate() + template.validityDays);
-                setExpirationDate(date.toISOString().split('T')[0]);
-            }
-        }
-    };
+
 
     const handleSaveTemplate = async () => {
         if (!config || !companyId || !productName || !validityDays) {
