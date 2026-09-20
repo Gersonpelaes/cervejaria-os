@@ -60,7 +60,6 @@ const BuyerView: React.FC<Props> = ({ companyId, companyCode, config, stockItems
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Etiqueta de Validade State
-    const [labelPrinterProps, setLabelPrinterProps] = useState<{ isOpen: boolean, productName?: string }>({ isOpen: false });
 
     // Independent Purchase Modal State (CART)
     const [independentModalOpen, setIndependentModalOpen] = useState(false);
@@ -2686,7 +2685,8 @@ const SettingsPanel: React.FC<{ companyId: string, config: AppConfig }> = ({ com
 };
 
 const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, getRestaurantName: (id: string) => string }> = ({ companyId, config, getRestaurantName }) => {
-    const [activeTab, setActiveTab] = useState<'progress'|'config'|'schedule'>('progress');
+    const [labelPrinterProps, setLabelPrinterProps] = useState<{ isOpen: boolean, productName?: string }>({ isOpen: false });
+    const [activeTab, setActiveTab] = useState<'progress'|'config'|'schedule'|'templates'>('progress');
     const [selectedDate, setSelectedDate] = useState(() => {
         const d = new Date();
         if (d.getHours() < 4) d.setDate(d.getDate() - 1);
