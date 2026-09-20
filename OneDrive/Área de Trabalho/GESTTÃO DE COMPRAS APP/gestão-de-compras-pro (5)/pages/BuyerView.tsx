@@ -2825,6 +2825,12 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                     >
                         Agendar Produção
                     </button>
+                    <button 
+                        onClick={() => setActiveTab('templates')}
+                        className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'templates' ? 'bg-white shadow text-brand-700' : 'text-gray-600 hover:bg-gray-200'}`}
+                    >
+                        Templates de Etiquetas
+                    </button>
                 </div>
                 <Button 
                     variant="primary" 
@@ -3084,6 +3090,48 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                             </Button>
                         </form>
                     </div>
+                </div>
+            </Card>
+            )}
+
+            {activeTab === 'templates' && (
+            <Card title="Templates de Etiquetas de Validade">
+                <p className="text-sm text-gray-500 mb-4">
+                    Esses templates agilizam a impressão de etiquetas pela equipe da cozinha.
+                </p>
+                <div className="space-y-4">
+                    {config.labelTemplates && config.labelTemplates.length > 0 ? (
+                        config.labelTemplates.map(t => (
+                            <div key={t.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-lg">{t.name}</h4>
+                                    <p className="text-sm text-gray-600">Validade: <strong>{t.validityDays} dias</strong> {t.storageForm && `| Armaz.: ${t.storageForm}`}</p>
+                                    {(t.ingredients || t.observations) && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {t.ingredients && <span className="block">Ingredientes: {t.ingredients}</span>}
+                                            {t.observations && <span className="block">Obs: {t.observations}</span>}
+                                        </p>
+                                    )}
+                                </div>
+                                <button 
+                                    onClick={async () => {
+                                        if (confirm('Tem certeza que deseja excluir este template?')) {
+                                            const newTemplates = config.labelTemplates!.filter(x => x.id !== t.id);
+                                            await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/config`, 'main'), {
+                                                labelTemplates: newTemplates
+                                            });
+                                        }
+                                    }} 
+                                    className="text-red-500 hover:text-red-700 bg-white border p-2 rounded-lg shadow-sm"
+                                    title="Excluir Template"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-gray-400 py-6 text-center bg-gray-50 rounded-lg border border-dashed">Nenhum template salvo. Para criar, clique no botão azul 'Gerar Etiqueta' acima e salve um novo.</p>
+                    )}
                 </div>
             </Card>
             )}
