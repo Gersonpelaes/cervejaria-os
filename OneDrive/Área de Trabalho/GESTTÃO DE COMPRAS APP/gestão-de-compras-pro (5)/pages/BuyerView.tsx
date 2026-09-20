@@ -3094,6 +3094,7 @@ const ProductionSettingsView: React.FC<{ companyId: string, config: AppConfig, g
                 initialProductName={labelPrinterProps.productName} 
                 config={config}
                 companyId={companyId}
+                canSaveTemplate={true}
             />
         </div>
     );

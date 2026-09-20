@@ -930,6 +930,7 @@ const SectorView: React.FC<Props> = ({ companyId, config, user, stockItems, getR
                 initialProductName={labelPrinterProps.productName} 
                 config={config}
                 companyId={companyId}
+                canSaveTemplate={false}
             />
         </div>
     );

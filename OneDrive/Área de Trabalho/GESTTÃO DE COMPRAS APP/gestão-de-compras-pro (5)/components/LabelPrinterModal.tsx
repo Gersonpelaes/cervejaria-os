@@ -13,9 +13,10 @@ interface LabelPrinterModalProps {
     initialProductName?: string;
     config?: AppConfig;
     companyId?: string;
+    canSaveTemplate?: boolean;
 }
 
-export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, onClose, initialProductName, config, companyId }) => {
+export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, onClose, initialProductName, config, companyId, canSaveTemplate }) => {
     const [productName, setProductName] = useState('');
     const [manufactureDate, setManufactureDate] = useState('');
     const [expirationDate, setExpirationDate] = useState('');
@@ -45,21 +46,40 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
             if (initialProductName && config?.labelTemplates) {
                 const match = config.labelTemplates.find(t => t.name.toLowerCase() === initialProductName.toLowerCase());
                 if (match) {
-                    handleSelectTemplate(match.id, match);
+                    handleSelectTemplate(match);
                 }
             }
         }
     }, [isOpen, initialProductName, config]);
 
-    const handleSelectTemplate = (id: string, templateObj?: LabelTemplate) => {
-        setSelectedTemplateId(id);
-        const template = templateObj || config?.labelTemplates?.find(t => t.id === id);
-        if (template) {
-            setProductName(template.name);
-            setValidityDays(template.validityDays);
-            setStorageForm(template.storageForm || '');
-            setIngredients(template.ingredients || '');
-            setObservations(template.observations || '');
+    const handleSelectTemplate = (template: LabelTemplate) => {
+        setSelectedTemplateId(template.id);
+        setProductName(template.name);
+        setValidityDays(template.validityDays);
+        setStorageForm(template.storageForm || '');
+        setIngredients(template.ingredients || '');
+        setObservations(template.observations || '');
+        
+        const today = new Date().toISOString().split('T')[0];
+        setManufactureDate(today);
+        
+        if (template.validityDays > 0) {
+            const date = new Date(today);
+            date.setDate(date.getDate() + template.validityDays);
+            setExpirationDate(date.toISOString().split('T')[0]);
+        }
+    };
+
+    const handleProductNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setProductName(val);
+        if (config?.labelTemplates) {
+            const match = config.labelTemplates.find(t => t.name.toLowerCase() === val.toLowerCase());
+            if (match) {
+                handleSelectTemplate(match);
+            }
+        }
+    };
             
             const today = new Date().toISOString().split('T')[0];
             setManufactureDate(today);
@@ -109,7 +129,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
         }
     }, [validityDays, manufactureDate]);
 
-    const handlePrint = () => {
+    const handlePrint = (printDetailed: boolean) => {
         // Formata as datas para o padrão brasileiro (DD/MM/YYYY)
         const formatBR = (dateStr: string) => {
             if (!dateStr) return '';
@@ -191,20 +211,20 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                     <span class="value">${responsible.toUpperCase()}</span>
                 </div>
                 
-                ${storageForm ? `
+                ${printDetailed && storageForm ? `
                 <div class="row">
                     <span class="label">ARMAZ.:</span>
                     <span class="value" style="font-size: 9px;">${storageForm}</span>
                 </div>
                 ` : ''}
 
-                ${ingredients ? `
+                ${printDetailed && ingredients ? `
                 <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
                     <span class="label">INGR.:</span> ${ingredients}
                 </div>
                 ` : ''}
 
-                ${observations ? `
+                ${printDetailed && observations ? `
                 <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
                     <span class="label">OBS.:</span> ${observations}
                 </div>
@@ -247,27 +267,20 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Gerar Etiqueta de Validade">
             <div className="space-y-4">
-                {config && config.labelTemplates && config.labelTemplates.length > 0 && (
-                    <div className="mb-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Templates Salvos</label>
-                        <select 
-                            className="w-full px-3 py-2 border border-brand-300 bg-brand-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
-                            value={selectedTemplateId}
-                            onChange={(e) => handleSelectTemplate(e.target.value)}
-                        >
-                            <option value="">-- Selecione uma preparação --</option>
-                            {config.labelTemplates.map(t => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                {config?.labelTemplates && (
+                    <datalist id="templates-datalist">
+                        {config.labelTemplates.map(t => (
+                            <option key={t.id} value={t.name} />
+                        ))}
+                    </datalist>
                 )}
                 
                 <Input 
                     label="Produto / Receita" 
                     value={productName} 
-                    onChange={e => setProductName(e.target.value)} 
+                    onChange={handleProductNameChange} 
                     placeholder="Ex: Molho de Tomate"
+                    list="templates-datalist"
                 />
                 
                 <div className="grid grid-cols-2 gap-4">
@@ -326,17 +339,29 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between gap-3">
-                    <Button variant="outline" onClick={handleSaveTemplate} disabled={!productName || !validityDays || !config}>
-                        <Save className="w-4 h-4 mr-2" /> Salvar Template
-                    </Button>
-                    <div className="flex gap-2">
+                    <div>
+                        {canSaveTemplate && (
+                            <Button variant="outline" onClick={handleSaveTemplate} disabled={!productName || !validityDays || !config}>
+                                <Save className="w-4 h-4 mr-2" /> Salvar Template
+                            </Button>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
                         <Button variant="outline" onClick={onClose}>Cancelar</Button>
                         <Button 
-                            onClick={handlePrint}
+                            variant="secondary"
+                            onClick={() => handlePrint(false)}
                             disabled={!productName || !manufactureDate || !expirationDate}
                         >
                             <Printer className="w-4 h-4" />
-                            Imprimir
+                            Simples
+                        </Button>
+                        <Button 
+                            onClick={() => handlePrint(true)}
+                            disabled={!productName || !manufactureDate || !expirationDate}
+                        >
+                            <Printer className="w-4 h-4" />
+                            Completa
                         </Button>
                     </div>
                 </div>
