@@ -370,6 +370,11 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                             Completa
                         </Button>
                     </div>
+                    <div className="flex justify-end w-full">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                            Status do Destino: {config?.useRemotePrinter ? <span className="text-green-600 font-bold">Terminal Remoto (Nuvem)</span> : <span className="text-blue-600 font-bold">Impressora do Celular</span>}
+                        </span>
+                    </div>
                 </div>
             </div>
         </Modal>
