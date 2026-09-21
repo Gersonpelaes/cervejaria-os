@@ -289,7 +289,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                     list="templates-datalist"
                 />
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input 
                         type="date"
                         label="Data de Fabricação" 
@@ -300,18 +300,18 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                         <label className="block text-sm font-medium text-gray-700 mb-1">Validade (Dias)</label>
                         <input 
                             type="number"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
-                            placeholder="Ex: 3"
+                            min="1"
                             value={validityDays}
-                            onChange={e => setValidityDays(e.target.value ? parseInt(e.target.value) : '')}
+                            onChange={e => setValidityDays(e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-brand-500 focus:border-brand-500"
                         />
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input 
                         type="date"
-                        label="Data de Validade" 
+                        label="Data de Validade (Cálculo)" 
                         value={expirationDate} 
                         onChange={e => setExpirationDate(e.target.value)} 
                     />
