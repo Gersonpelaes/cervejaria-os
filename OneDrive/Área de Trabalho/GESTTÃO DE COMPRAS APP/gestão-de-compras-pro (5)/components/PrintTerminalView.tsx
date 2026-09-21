@@ -19,14 +19,19 @@ export const PrintTerminalView: React.FC<Props> = ({ companyId }) => {
         
         const q = query(
             collection(db, `${BASE_PATH}/companies/${companyId}/print_jobs`),
-            where('status', '==', 'pending'),
-            orderBy('createdAt', 'asc')
+            where('status', '==', 'pending')
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const newJobs: PrintJob[] = [];
             snapshot.forEach(doc => {
                 newJobs.push({ id: doc.id, ...doc.data() } as PrintJob);
+            });
+            // Sort in memory to avoid needing a Firestore Composite Index
+            newJobs.sort((a, b) => {
+                const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return timeA - timeB;
             });
             setJobs(newJobs);
         });
