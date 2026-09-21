@@ -3,7 +3,7 @@ import { Modal, Button, Input } from './UI';
 import { Printer } from 'lucide-react';
 
 import { AppConfig, LabelTemplate } from '../types';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db, BASE_PATH } from '../services/firebaseConfig';
 import { Save } from 'lucide-react';
 
@@ -119,7 +119,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
         }
     }, [validityDays, manufactureDate]);
 
-    const handlePrint = (printDetailed: boolean) => {
+    const handlePrint = async (printDetailed: boolean) => {
         // Formata as datas para o padrão brasileiro (DD/MM/YYYY)
         const formatBR = (dateStr: string) => {
             if (!dateStr) return '';
@@ -172,14 +172,14 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                         font-weight: bold;
                     }
                     .value {
-                        font-size: 11px;
+                        text-align: right;
                     }
                     .footer {
+                        font-size: 8px;
                         text-align: center;
-                        font-size: 9px;
-                        margin-top: 2px;
-                        border-top: 1px dotted #000;
+                        border-top: 1px dashed #000;
                         padding-top: 2px;
+                        margin-top: 4px;
                     }
                 </style>
             </head>
@@ -193,9 +193,9 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                 
                 <div class="row">
                     <span class="label">VALID.:</span>
-                    <span class="value" style="font-weight:bold;">${formatBR(expirationDate)}</span>
+                    <span class="value">${formatBR(expirationDate)}</span>
                 </div>
-
+                
                 <div class="row">
                     <span class="label">RESP.:</span>
                     <span class="value">${responsible.toUpperCase()}</span>
@@ -226,6 +226,22 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
             </body>
             </html>
         `;
+
+        if (config?.useRemotePrinter && companyId) {
+            try {
+                await addDoc(collection(db, `${BASE_PATH}/companies/${companyId}/print_jobs`), {
+                    htmlContent: html,
+                    status: 'pending',
+                    createdAt: serverTimestamp(),
+                    createdBy: responsible
+                });
+                alert('Etiqueta enviada para o Servidor de Impressão Remota com sucesso!');
+            } catch (e) {
+                console.error(e);
+                alert('Erro ao enviar etiqueta para o servidor de impressão.');
+            }
+            return;
+        }
 
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';

@@ -9,6 +9,7 @@ import {
     Bell, ChevronDown, Plus, Trash, MessageCircle, Send, Upload, Edit3, Save, DollarSign, CheckCircle, FileText, Clock, Camera, Download, ExternalLink, Trash2, Database, Eye, Loader2, ClipboardCheck, TrendingUp, Truck, AlertTriangle, AlertCircle, BarChart3, ShoppingCart, RefreshCw, CheckSquare, Printer
 } from 'lucide-react';
 import { LabelPrinterModal } from '../components/LabelPrinterModal';
+import { PrintTerminalView } from '../components/PrintTerminalView';
 
 interface Props {
     companyId: string;
@@ -762,6 +763,7 @@ const BuyerView: React.FC<Props> = ({ companyId, companyCode, config, stockItems
                         { id: 'production', label: 'Produção (Checklist)', icon: CheckSquare },
                         { id: 'reports', label: 'Relatórios / Projeção', icon: FileBarChart },
                         { id: 'settings', label: 'Configurações', icon: Settings },
+                        { id: 'printTerminal', label: 'Terminal de Impressão', icon: Printer },
                     ].map(item => (
                         <button
                             key={item.id}
@@ -1011,6 +1013,8 @@ const BuyerView: React.FC<Props> = ({ companyId, companyCode, config, stockItems
                 {view === 'reports' && <ReportView companyId={companyId} config={config} getRestaurantName={getRestaurantName} stockItems={stockItems} getSectorName={getSectorName} />}
 
                 {view === 'settings' && <SettingsPanel companyId={companyId} config={config} />}
+
+                {view === 'printTerminal' && <PrintTerminalView companyId={companyId} />}
 
                 {view === 'suppliers' && <SuppliersView companyId={companyId} suppliers={suppliers} />}
 
@@ -2605,6 +2609,33 @@ const SettingsPanel: React.FC<{ companyId: string, config: AppConfig }> = ({ com
 
     return (
         <div className="space-y-8">
+            <Card title="Sistema de Impressão Remota (Etiquetas)">
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
+                    <div>
+                        <h4 className="font-bold text-gray-800">Ativar Servidor de Impressão Remota</h4>
+                        <p className="text-sm text-gray-500 max-w-xl">
+                            Se ativado, os usuários de celular não abrirão a tela de impressão do aparelho. 
+                            Em vez disso, a etiqueta será enviada para a aba "Terminal de Impressão" aberta no computador conectado à impressora térmica.
+                        </p>
+                    </div>
+                    <div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                className="sr-only peer"
+                                checked={!!config.useRemotePrinter}
+                                onChange={async (e) => {
+                                    await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/app_config`, 'main'), {
+                                        useRemotePrinter: e.target.checked
+                                    });
+                                }}
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                        </label>
+                    </div>
+                </div>
+            </Card>
+
             {/* Storage & Backup */}
             <Card title="Armazenamento e Backup">
                 <div className="flex flex-col md:flex-row gap-6 items-start">

@@ -15,6 +15,14 @@ export interface LabelTemplate {
     observations?: string;
 }
 
+export interface PrintJob {
+    id: string;
+    htmlContent: string;
+    status: 'pending' | 'completed';
+    createdAt: any; // Firestore Timestamp
+    createdBy?: string;
+}
+
 export interface AppConfig {
     restaurants: { id: string; name: string }[];
     sectors: { id: string; name: string }[];
@@ -23,6 +31,7 @@ export interface AppConfig {
     admPasswords?: Record<string, string>; // { restaurantId: "password" }
     productionTasks?: { id: string; restaurantId: string; sectorId: string; name: string; type?: 'task' | 'production' }[];
     labelTemplates?: LabelTemplate[];
+    useRemotePrinter?: boolean;
 }
 
 export interface Item {
@@ -163,4 +172,4 @@ export interface DailyProduction {
     productionList?: ProductionListItem[];
 }
 
-export type BuyerSubView = 'orders' | 'stock' | 'reports' | 'financial' | 'settings' | 'countLists' | 'suppliers' | 'production';
+export type BuyerSubView = 'orders' | 'stock' | 'reports' | 'financial' | 'settings' | 'countLists' | 'suppliers' | 'production' | 'printTerminal';
