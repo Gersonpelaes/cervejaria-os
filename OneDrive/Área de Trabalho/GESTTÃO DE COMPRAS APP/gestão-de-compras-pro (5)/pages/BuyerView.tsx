@@ -2625,9 +2625,16 @@ const SettingsPanel: React.FC<{ companyId: string, config: AppConfig }> = ({ com
                                 className="sr-only peer"
                                 checked={!!config.useRemotePrinter}
                                 onChange={async (e) => {
-                                    await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/app_config`, 'main'), {
-                                        useRemotePrinter: e.target.checked
-                                    });
+                                    const isChecked = e.target.checked;
+                                    try {
+                                        await updateDoc(doc(db, `${BASE_PATH}/companies/${companyId}/app_config`, 'main'), {
+                                            useRemotePrinter: isChecked
+                                        });
+                                        alert(isChecked ? "Servidor Remoto ATIVADO com sucesso!" : "Servidor Remoto DESATIVADO com sucesso!");
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert("ERRO ao salvar configuração: " + (err as any).message);
+                                    }
                                 }}
                             />
                             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
