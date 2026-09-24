@@ -22,6 +22,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
     const [expirationDate, setExpirationDate] = useState('');
     const [responsible, setResponsible] = useState('');
     const [validityDays, setValidityDays] = useState<number | ''>('');
+    const [copies, setCopies] = useState<number>(1);
     const [storageForm, setStorageForm] = useState('');
     const [ingredients, setIngredients] = useState('');
     const [observations, setObservations] = useState('');
@@ -140,6 +141,10 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                     }
                     body {
                         margin: 0;
+                        background: #fff;
+                    }
+                    .page {
+                        margin: 0;
                         padding: 4px;
                         font-family: Arial, sans-serif;
                         font-size: 10px;
@@ -151,6 +156,7 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                         display: flex;
                         flex-direction: column;
                         justify-content: space-between;
+                        page-break-after: always;
                     }
                     .title {
                         font-size: 12px;
@@ -184,45 +190,49 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                 </style>
             </head>
             <body>
-                <div class="title">${productName.toUpperCase()}</div>
-                
-                <div class="row">
-                    <span class="label">FABRIC.:</span>
-                    <span class="value">${formatBR(manufactureDate)}</span>
-                </div>
-                
-                <div class="row">
-                    <span class="label">VALID.:</span>
-                    <span class="value">${formatBR(expirationDate)}</span>
-                </div>
-                
-                <div class="row">
-                    <span class="label">RESP.:</span>
-                    <span class="value">${responsible.toUpperCase()}</span>
-                </div>
-                
-                ${printDetailed && storageForm ? `
-                <div class="row">
-                    <span class="label">ARMAZ.:</span>
-                    <span class="value" style="font-size: 9px;">${storageForm}</span>
-                </div>
-                ` : ''}
+                ${Array(copies).fill(`
+                <div class="page">
+                    <div class="title">${productName.toUpperCase()}</div>
+                    
+                    <div class="row">
+                        <span class="label">FABRIC.:</span>
+                        <span class="value">${formatBR(manufactureDate)}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">VALID.:</span>
+                        <span class="value">${formatBR(expirationDate)}</span>
+                    </div>
+                    
+                    <div class="row">
+                        <span class="label">RESP.:</span>
+                        <span class="value">${responsible.toUpperCase()}</span>
+                    </div>
+                    
+                    ${printDetailed && storageForm ? `
+                    <div class="row">
+                        <span class="label">ARMAZ.:</span>
+                        <span class="value" style="font-size: 9px;">${storageForm}</span>
+                    </div>
+                    ` : ''}
 
-                ${printDetailed && ingredients ? `
-                <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
-                    <span class="label">INGR.:</span> ${ingredients}
-                </div>
-                ` : ''}
+                    ${printDetailed && ingredients ? `
+                    <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
+                        <span class="label">INGR.:</span> ${ingredients}
+                    </div>
+                    ` : ''}
 
-                ${printDetailed && observations ? `
-                <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
-                    <span class="label">OBS.:</span> ${observations}
+                    ${printDetailed && observations ? `
+                    <div style="font-size: 8px; margin-top: 2px; line-height: 1;">
+                        <span class="label">OBS.:</span> ${observations}
+                    </div>
+                    ` : ''}
+                    
+                    <div class="footer">
+                        USO INTERNO
+                    </div>
                 </div>
-                ` : ''}
-                
-                <div class="footer">
-                    USO INTERNO
-                </div>
+                `).join('\n')}
             </body>
             </html>
         `;
@@ -352,7 +362,17 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
                             </Button>
                         )}
                     </div>
-                    <div className="flex flex-wrap justify-end gap-2">
+                    <div className="flex flex-wrap justify-end items-center gap-2">
+                        <div className="flex items-center gap-2 mr-2">
+                            <label className="text-sm text-gray-700 font-medium">Cópias:</label>
+                            <input 
+                                type="number" 
+                                min="1" 
+                                value={copies} 
+                                onChange={e => setCopies(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-16 px-2 py-1.5 border border-gray-300 rounded-md text-center focus:ring-brand-500 focus:border-brand-500"
+                            />
+                        </div>
                         <Button variant="outline" onClick={onClose}>Cancelar</Button>
                         <Button 
                             variant="secondary"
@@ -380,3 +400,6 @@ export const LabelPrinterModal: React.FC<LabelPrinterModalProps> = ({ isOpen, on
         </Modal>
     );
 };
+
+
+
