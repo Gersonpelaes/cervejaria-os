@@ -79,6 +79,16 @@ export interface Supplier {
     category?: string;
 }
 
+export interface Beneficiary {
+    id: string;
+    name: string;
+    type: 'collaborator' | 'supplier';
+    roleOrCategory: string; // Função (se colaborador) ou Tipo de Fornecedor (se fornecedor)
+    phone?: string;
+    pixKey: string;
+    dailyRate?: number; // Valor da diária (apenas colaborador)
+}
+
 export interface StockCountItem {
     id: string;
     name: string;

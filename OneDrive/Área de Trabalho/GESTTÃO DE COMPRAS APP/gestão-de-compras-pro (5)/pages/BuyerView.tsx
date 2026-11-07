@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, deleteDoc, Timestamp, increment, arrayUnion, arrayRemove, getDocs, writeBatch, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, deleteDoc, Timestamp, increment, arrayUnion, arrayRemove, getDocs, writeBatch, orderBy, limit, addDoc } from 'firebase/firestore';
 import { db, BASE_PATH } from '../services/firebaseConfig';
-import { AppConfig, Order, StockItem, BuyerSubView, ChatMessage, Bill, StockCount, Item, Supplier, DailyProduction } from '../types';
+import { AppConfig, Order, StockItem, BuyerSubView, ChatMessage, Bill, StockCount, Item, Supplier, DailyProduction, Beneficiary } from '../types';
 import { Button, Input, Select, Card, Modal } from '../components/UI';
 import {
     LayoutDashboard, Package, FileBarChart, Settings, Share2,
-    Bell, ChevronDown, Plus, Trash, MessageCircle, Send, Upload, Edit3, Save, DollarSign, CheckCircle, FileText, Clock, Camera, Download, ExternalLink, Trash2, Database, Eye, Loader2, ClipboardCheck, TrendingUp, Truck, AlertTriangle, AlertCircle, BarChart3, ShoppingCart, RefreshCw, CheckSquare, Printer
+    Bell, ChevronDown, Plus, Trash, MessageCircle, Send, Upload, Edit3, Save, DollarSign, CheckCircle, FileText, Clock, Camera, Download, ExternalLink, Trash2, Database, Eye, Loader2, ClipboardCheck, TrendingUp, Truck, AlertTriangle, AlertCircle, BarChart3, ShoppingCart, RefreshCw, CheckSquare, Printer, Users, Phone, Key, Briefcase
 } from 'lucide-react';
 import { LabelPrinterModal } from '../components/LabelPrinterModal';
 import { PrintTerminalView } from '../components/PrintTerminalView';
@@ -1468,8 +1468,10 @@ const openBase64AsBlob = (base64Data?: string) => {
 
 // ... (FinancialView remains same) ...
 const FinancialView: React.FC<{ companyId: string, config: AppConfig, getRestaurantName: (id: string) => string }> = ({ companyId, config, getRestaurantName }) => {
+    const [subTab, setSubTab] = useState<'bills' | 'beneficiaries'>('bills');
     const [pendingBills, setPendingBills] = useState<Bill[]>([]);
     const [paidBills, setPaidBills] = useState<Bill[]>([]);
+    const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
     const [filterStatus, setFilterStatus] = useState<'pending' | 'paid'>('pending');
 
     const [finFilters, setFinFilters] = useState(() => {
@@ -1489,6 +1491,35 @@ const FinancialView: React.FC<{ companyId: string, config: AppConfig, getRestaur
     const [isPaying, setIsPaying] = useState(false);
     const [isCompressing, setIsCompressing] = useState(false);
 
+    // New Bill Modal State
+    const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
+    const [newBill, setNewBill] = useState<Partial<Bill>>({
+        restaurantId: config.restaurants[0]?.id || '',
+        supplier: '',
+        value: undefined,
+        paymentMethod: 'boleto',
+        pixKey: '',
+        dueDate: new Date().toISOString().split('T')[0]
+    });
+    const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>('');
+    const [daysWorked, setDaysWorked] = useState<string>('1');
+    const [billFileName, setBillFileName] = useState('');
+    const [billFileData, setBillFileData] = useState<string | null>(null);
+    const [isSubmittingBill, setIsSubmittingBill] = useState(false);
+    const billFileInputRef = useRef<HTMLInputElement>(null);
+    const billCameraInputRef = useRef<HTMLInputElement>(null);
+
+    // Beneficiary Modal State
+    const [isBenModalOpen, setIsBenModalOpen] = useState(false);
+    const [editingBen, setEditingBen] = useState<Partial<Beneficiary>>({
+        type: 'collaborator',
+        name: '',
+        roleOrCategory: '',
+        phone: '',
+        pixKey: '',
+        dailyRate: undefined
+    });
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -1505,8 +1536,15 @@ const FinancialView: React.FC<{ companyId: string, config: AppConfig, getRestaur
             setPendingBills(list);
         });
 
+        const unsubBen = onSnapshot(collection(db, `${BASE_PATH}/companies/${companyId}/beneficiaries`), (snap) => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Beneficiary));
+            list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            setBeneficiaries(list);
+        });
+
         return () => {
             unsubPending();
+            unsubBen();
         };
     }, [companyId]);
 
@@ -1533,6 +1571,124 @@ const FinancialView: React.FC<{ companyId: string, config: AppConfig, getRestaur
             unsubPaid();
         };
     }, [companyId, finFilters.startDate, finFilters.endDate]);
+
+    const handleSelectBeneficiary = (benId: string) => {
+        setSelectedBeneficiaryId(benId);
+        if (!benId) return;
+
+        const ben = beneficiaries.find(b => b.id === benId);
+        if (ben) {
+            setDaysWorked('1');
+            setNewBill(prev => ({
+                ...prev,
+                supplier: ben.name,
+                pixKey: ben.pixKey || prev.pixKey || '',
+                paymentMethod: ben.pixKey ? 'pix' : prev.paymentMethod,
+                value: (ben.type === 'collaborator' && ben.dailyRate) ? ben.dailyRate : prev.value
+            }));
+        }
+    };
+
+    const handleDaysChange = (daysStr: string) => {
+        setDaysWorked(daysStr);
+        const ben = beneficiaries.find(b => b.id === selectedBeneficiaryId);
+        if (ben && ben.type === 'collaborator' && ben.dailyRate) {
+            const d = parseFloat(daysStr) || 0;
+            setNewBill(prev => ({
+                ...prev,
+                value: Number((ben.dailyRate! * d).toFixed(2))
+            }));
+        }
+    };
+
+    const handleSaveBeneficiary = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingBen.name) return;
+
+        try {
+            const ref = collection(db, `${BASE_PATH}/companies/${companyId}/beneficiaries`);
+            const payload = {
+                name: editingBen.name,
+                type: editingBen.type || 'collaborator',
+                roleOrCategory: editingBen.roleOrCategory || '',
+                phone: editingBen.phone || '',
+                pixKey: editingBen.pixKey || '',
+                dailyRate: editingBen.type === 'collaborator' && editingBen.dailyRate ? Number(editingBen.dailyRate) : null
+            };
+
+            if (editingBen.id) {
+                await updateDoc(doc(ref, editingBen.id), payload);
+            } else {
+                const newId = crypto.randomUUID();
+                await setDoc(doc(ref, newId), { ...payload, id: newId });
+            }
+            setIsBenModalOpen(false);
+            setEditingBen({ type: 'collaborator', name: '', roleOrCategory: '', phone: '', pixKey: '', dailyRate: undefined });
+        } catch (err) {
+            console.error(err);
+            alert("Erro ao salvar beneficiário.");
+        }
+    };
+
+    const handleDeleteBeneficiary = async (id: string) => {
+        if (confirm('Deseja realmente excluir este beneficiário?')) {
+            await deleteDoc(doc(db, `${BASE_PATH}/companies/${companyId}/beneficiaries`, id));
+        }
+    };
+
+    const handleBillFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setBillFileName(file.name);
+            setIsCompressing(true);
+            try {
+                const base64 = await compressImage(file);
+                setBillFileData(base64);
+            } catch (error) {
+                console.error("Erro ao processar imagem", error);
+                alert("Erro ao processar arquivo.");
+                setBillFileName('');
+            }
+            setIsCompressing(false);
+        }
+    };
+
+    const handleLaunchBillSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newBill.supplier || !newBill.value || !newBill.dueDate || !newBill.restaurantId) return;
+
+        setIsSubmittingBill(true);
+        try {
+            await addDoc(collection(db, `${BASE_PATH}/companies/${companyId}/bills`), {
+                ...newBill,
+                value: Number(newBill.value),
+                fileName: billFileName || null,
+                fileData: billFileData || null,
+                status: 'pending',
+                createdAt: Timestamp.now(),
+                createdBy: 'Gestor'
+            });
+
+            setNewBill({
+                restaurantId: config.restaurants[0]?.id || '',
+                supplier: '',
+                value: undefined,
+                paymentMethod: 'boleto',
+                pixKey: '',
+                dueDate: new Date().toISOString().split('T')[0]
+            });
+            setSelectedBeneficiaryId('');
+            setDaysWorked('1');
+            setBillFileName('');
+            setBillFileData(null);
+            setIsLaunchModalOpen(false);
+            alert("Conta lançada com sucesso!");
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao lançar conta.");
+        }
+        setIsSubmittingBill(false);
+    };
 
     const openPaymentModal = (bill: Bill) => {
         setPaymentBill(bill);
@@ -1588,124 +1744,446 @@ const FinancialView: React.FC<{ companyId: string, config: AppConfig, getRestaur
         return true;
     }).sort((a, b) => (new Date(a.dueDate || 0).getTime() || 0) - (new Date(b.dueDate || 0).getTime() || 0));
 
+    const selectedBenObj = beneficiaries.find(b => b.id === selectedBeneficiaryId);
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h2 className="text-2xl font-bold text-gray-800">Contas a Pagar</h2>
-                <div className="flex flex-wrap gap-2">
-                    <Button variant={filterStatus === 'pending' ? 'primary' : 'outline'} onClick={() => setFilterStatus('pending')}>Pendentes</Button>
-                    <Button variant={filterStatus === 'paid' ? 'primary' : 'outline'} onClick={() => setFilterStatus('paid')}>Pagas</Button>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">Financeiro</h2>
+                    <p className="text-sm text-gray-500">Gestão de contas a pagar e cadastro de beneficiários (PIX / Diárias)</p>
                 </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select
-                        label="Filtrar por Restaurante"
-                        value={finFilters.restaurantId}
-                        onChange={e => setFinFilters(p => ({ ...p, restaurantId: e.target.value }))}
-                    >
-                        <option value="">Todos os Restaurantes (Agrupado)</option>
-                        {config.restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </Select>
-                    <Input
-                        label="Buscar Fornecedor"
-                        placeholder="Digite o nome ou código..."
-                        value={finFilters.search}
-                        onChange={e => setFinFilters(p => ({ ...p, search: e.target.value }))}
-                    />
-                </div>
-                {filterStatus === 'paid' && (
-                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
-                        <Input
-                            label="Data Inicial (Pagamento)"
-                            type="date"
-                            value={finFilters.startDate}
-                            onChange={e => setFinFilters(p => ({ ...p, startDate: e.target.value }))}
-                        />
-                        <Input
-                            label="Data Final (Pagamento)"
-                            type="date"
-                            value={finFilters.endDate}
-                            onChange={e => setFinFilters(p => ({ ...p, endDate: e.target.value }))}
-                        />
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <button
+                            onClick={() => setSubTab('bills')}
+                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-colors ${subTab === 'bills' ? 'bg-white shadow text-brand-700' : 'text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            <DollarSign className="w-4 h-4" /> Contas a Pagar
+                        </button>
+                        <button
+                            onClick={() => setSubTab('beneficiaries')}
+                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-colors ${subTab === 'beneficiaries' ? 'bg-white shadow text-brand-700' : 'text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            <Users className="w-4 h-4" /> Beneficiários ({beneficiaries.length})
+                        </button>
                     </div>
-                )}
+                    <Button onClick={() => {
+                        setNewBill(p => ({ ...p, restaurantId: config.restaurants[0]?.id || '' }));
+                        setIsLaunchModalOpen(true);
+                    }}>
+                        <Plus className="w-4 h-4 mr-1" /> Lançar Conta
+                    </Button>
+                </div>
             </div>
 
-            <div className="space-y-8">
-                {Object.entries(
-                    filtered.reduce((acc, bill) => {
-                        const rId = bill.restaurantId || 'unknown';
-                        if (!acc[rId]) acc[rId] = [];
-                        acc[rId].push(bill);
-                        return acc;
-                    }, {} as Record<string, Bill[]>)
-                ).map(([rId, rBills]) => (
-                    <div key={rId} className="space-y-4">
-                        <h3 className="text-lg font-bold text-gray-700 border-b pb-2 flex items-center gap-2">
-                            {getRestaurantName(rId)}
-                            <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500 font-normal">{rBills.length} contas</span>
-                        </h3>
-                        <div className="grid grid-cols-1 gap-4">
-                            {rBills.map(bill => (
-                                <Card key={bill.id} className={`border-l-4 ${bill.status === 'paid' ? 'border-l-green-500 bg-gray-50' : 'border-l-red-500'}`}>
-                                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                                        <div className={`flex-1 ${bill.status === 'paid' ? 'opacity-50' : ''}`}>
-                                            <div className={`flex items-center gap-2 ${bill.status === 'paid' ? 'line-through decoration-gray-500' : ''}`}>
-                                                <span className="font-bold text-lg text-gray-800">{bill.supplier || 'N/A'}</span>
-                                                {/* Removed badge as header now groups */}
-                                            </div>
-                                            <div className="text-sm text-gray-600 mt-1 flex flex-wrap gap-4">
-                                                <span>Vencimento: <strong>{(bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())) ? new Date(bill.dueDate).toLocaleDateString('pt-BR') : 'N/A'}</strong></span>
-                                                <span>Pagamento: <strong>{(bill.paymentMethod || 'N/A').toUpperCase()}</strong></span>
-                                                {bill.pixKey && <span>Pix: <code className="bg-gray-100 px-1 rounded">{bill.pixKey}</code></span>}
-                                            </div>
-                                            {bill.fileName && (
-                                                <button
-                                                    onClick={() => openBase64AsBlob(bill.fileData)}
-                                                    className="mt-2 text-xs text-blue-600 flex items-center gap-1 hover:underline font-medium"
-                                                >
-                                                    <Eye className="w-3 h-3" /> Anexo Original: {bill.fileName}
-                                                </button>
-                                            )}
-                                            {bill.receiptFileName && (
-                                                <div className="mt-1 text-xs text-green-600 flex items-center gap-1 font-bold">
-                                                    <CheckCircle className="w-3 h-3" /> Comprovante: {bill.receiptFileName}
-                                                </div>
-                                            )}
-                                        </div>
+            {subTab === 'bills' ? (
+                <>
+                    <div className="flex justify-between items-center">
+                        <div className="flex gap-2">
+                            <Button variant={filterStatus === 'pending' ? 'primary' : 'outline'} onClick={() => setFilterStatus('pending')}>
+                                Pendentes ({pendingBills.length})
+                            </Button>
+                            <Button variant={filterStatus === 'paid' ? 'primary' : 'outline'} onClick={() => setFilterStatus('paid')}>
+                                Pagas
+                            </Button>
+                        </div>
+                    </div>
 
-                                        <div className="flex flex-col items-end gap-2 min-w-[150px]">
-                                            <span className="text-xl font-bold text-gray-800">R$ {Number(bill.value || 0).toFixed(2)}</span>
-                                            {bill.status === 'pending' ? (
-                                                <Button onClick={(e) => { e.stopPropagation(); openPaymentModal(bill); }} variant="success" className="w-full text-xs py-1">
-                                                    Marcar como Pago
-                                                </Button>
-                                            ) : (
-                                                <div className="flex flex-col items-end gap-1">
-                                                    <div className="flex items-center gap-1 text-green-600 font-bold text-sm bg-green-50 px-3 py-1 rounded-full border border-green-200">
-                                                        <CheckCircle className="w-4 h-4" /> PAGO
+                    <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Select
+                                label="Filtrar por Restaurante"
+                                value={finFilters.restaurantId}
+                                onChange={e => setFinFilters(p => ({ ...p, restaurantId: e.target.value }))}
+                            >
+                                <option value="">Todos os Restaurantes (Agrupado)</option>
+                                {config.restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </Select>
+                            <Input
+                                label="Buscar Fornecedor / Favorecido"
+                                placeholder="Digite o nome..."
+                                value={finFilters.search}
+                                onChange={e => setFinFilters(p => ({ ...p, search: e.target.value }))}
+                            />
+                        </div>
+                        {filterStatus === 'paid' && (
+                            <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                                <Input
+                                    label="Data Inicial (Pagamento)"
+                                    type="date"
+                                    value={finFilters.startDate}
+                                    onChange={e => setFinFilters(p => ({ ...p, startDate: e.target.value }))}
+                                />
+                                <Input
+                                    label="Data Final (Pagamento)"
+                                    type="date"
+                                    value={finFilters.endDate}
+                                    onChange={e => setFinFilters(p => ({ ...p, endDate: e.target.value }))}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="space-y-8">
+                        {Object.entries(
+                            filtered.reduce((acc, bill) => {
+                                const rId = bill.restaurantId || 'unknown';
+                                if (!acc[rId]) acc[rId] = [];
+                                acc[rId].push(bill);
+                                return acc;
+                            }, {} as Record<string, Bill[]>)
+                        ).map(([rId, rBills]) => (
+                            <div key={rId} className="space-y-4">
+                                <h3 className="text-lg font-bold text-gray-700 border-b pb-2 flex items-center gap-2">
+                                    {getRestaurantName(rId)}
+                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500 font-normal">{rBills.length} contas</span>
+                                </h3>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {rBills.map(bill => (
+                                        <Card key={bill.id} className={`border-l-4 ${bill.status === 'paid' ? 'border-l-green-500 bg-gray-50' : 'border-l-red-500'}`}>
+                                            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                                <div className={`flex-1 ${bill.status === 'paid' ? 'opacity-50' : ''}`}>
+                                                    <div className={`flex items-center gap-2 ${bill.status === 'paid' ? 'line-through decoration-gray-500' : ''}`}>
+                                                        <span className="font-bold text-lg text-gray-800">{bill.supplier || 'N/A'}</span>
                                                     </div>
-                                                    {bill.receiptFileData && (
+                                                    <div className="text-sm text-gray-600 mt-1 flex flex-wrap gap-4">
+                                                        <span>Vencimento: <strong>{(bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())) ? new Date(bill.dueDate).toLocaleDateString('pt-BR') : 'N/A'}</strong></span>
+                                                        <span>Pagamento: <strong>{(bill.paymentMethod || 'N/A').toUpperCase()}</strong></span>
+                                                        {bill.pixKey && <span>Pix: <code className="bg-purple-50 text-purple-800 border border-purple-200 px-1.5 py-0.5 rounded font-bold">{bill.pixKey}</code></span>}
+                                                    </div>
+                                                    {bill.fileName && (
                                                         <button
-                                                            onClick={() => openBase64AsBlob(bill.receiptFileData)}
-                                                            className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                                                            onClick={() => openBase64AsBlob(bill.fileData)}
+                                                            className="mt-2 text-xs text-blue-600 flex items-center gap-1 hover:underline font-medium"
                                                         >
-                                                            <Eye className="w-3 h-3" /> Ver Comprovante
+                                                            <Eye className="w-3 h-3" /> Anexo Original: {bill.fileName}
                                                         </button>
                                                     )}
+                                                    {bill.receiptFileName && (
+                                                        <div className="mt-1 text-xs text-green-600 flex items-center gap-1 font-bold">
+                                                            <CheckCircle className="w-3 h-3" /> Comprovante: {bill.receiptFileName}
+                                                        </div>
+                                                    )}
                                                 </div>
+
+                                                <div className="flex flex-col items-end gap-2 min-w-[150px]">
+                                                    <span className="text-xl font-bold text-gray-800">R$ {Number(bill.value || 0).toFixed(2)}</span>
+                                                    {bill.status === 'pending' ? (
+                                                        <Button onClick={(e) => { e.stopPropagation(); openPaymentModal(bill); }} variant="success" className="w-full text-xs py-1">
+                                                            Marcar como Pago
+                                                        </Button>
+                                                    ) : (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex items-center gap-1 text-green-600 font-bold text-sm bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                                                                <CheckCircle className="w-4 h-4" /> PAGO
+                                                            </div>
+                                                            {bill.receiptFileData && (
+                                                                <button
+                                                                    onClick={() => openBase64AsBlob(bill.receiptFileData)}
+                                                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                                                                >
+                                                                    <Eye className="w-3 h-3" /> Ver Comprovante
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {filtered.length === 0 && <p className="text-center text-gray-400 py-10">Nenhuma conta encontrada.</p>}
+                    </div>
+                </>
+            ) : (
+                <div className="space-y-6 animate-in fade-in">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-xl border">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800">Cadastro de Beneficiários</h3>
+                            <p className="text-sm text-gray-500">Cadastre colaboradores (com valor de diária) e fornecedores para preenchimento automático de PIX.</p>
+                        </div>
+                        <Button
+                            onClick={() => {
+                                setEditingBen({ type: 'collaborator', name: '', roleOrCategory: '', phone: '', pixKey: '', dailyRate: undefined });
+                                setIsBenModalOpen(true);
+                            }}
+                        >
+                            <Plus className="w-4 h-4 mr-1" /> Novo Beneficiário
+                        </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {beneficiaries.length === 0 ? (
+                            <p className="col-span-full text-center text-gray-400 py-10 bg-white rounded-lg border">Nenhum beneficiário cadastrado ainda.</p>
+                        ) : (
+                            beneficiaries.map(b => (
+                                <Card key={b.id} className={`border-l-4 ${b.type === 'collaborator' ? 'border-l-purple-500' : 'border-l-blue-500'}`}>
+                                    <div className="flex justify-between items-start">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="font-bold text-gray-800 text-lg">{b.name}</h4>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${b.type === 'collaborator' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {b.type === 'collaborator' ? 'Colaborador' : 'Fornecedor'}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-gray-600 flex items-center gap-1">
+                                                <Briefcase className="w-3.5 h-3.5 text-gray-400" />
+                                                <span>{b.type === 'collaborator' ? 'Função:' : 'Tipo:'} <strong>{b.roleOrCategory || 'N/A'}</strong></span>
+                                            </p>
+                                            {b.phone && (
+                                                <p className="text-sm text-gray-600 flex items-center gap-1">
+                                                    <Phone className="w-3.5 h-3.5 text-gray-400" />
+                                                    <span>{b.phone}</span>
+                                                </p>
                                             )}
+                                            {b.pixKey && (
+                                                <p className="text-sm text-gray-600 flex items-center gap-1">
+                                                    <Key className="w-3.5 h-3.5 text-purple-500" />
+                                                    <span>PIX: <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">{b.pixKey}</code></span>
+                                                </p>
+                                            )}
+                                            {b.type === 'collaborator' && b.dailyRate && (
+                                                <p className="text-sm text-green-700 font-bold pt-1">
+                                                    Valor da Diária: R$ {Number(b.dailyRate).toFixed(2)}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => { setEditingBen(b); setIsBenModalOpen(true); }}
+                                                className="p-1.5 hover:bg-gray-100 rounded text-blue-600"
+                                                title="Editar"
+                                            >
+                                                <Edit3 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteBeneficiary(b.id)}
+                                                className="p-1.5 hover:bg-gray-100 rounded text-red-500"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     </div>
                                 </Card>
-                            ))}
-                        </div>
+                            ))
+                        )}
                     </div>
-                ))}
-                {filtered.length === 0 && <p className="text-center text-gray-400 py-10">Nenhuma conta encontrada.</p>}
-            </div>
+                </div>
+            )}
+
+            {/* Modal Lançar Conta (Gestor) */}
+            <Modal isOpen={isLaunchModalOpen} onClose={() => setIsLaunchModalOpen(false)} title="Lançar Conta a Pagar">
+                <form onSubmit={handleLaunchBillSubmit} className="space-y-4">
+                    <Select
+                        label="Restaurante / Empresa"
+                        value={newBill.restaurantId || ''}
+                        onChange={e => setNewBill(p => ({ ...p, restaurantId: e.target.value }))}
+                        required
+                    >
+                        <option value="">Selecione...</option>
+                        {config.restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </Select>
+
+                    <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 space-y-3">
+                        <div className="flex justify-between items-center">
+                            <label className="text-xs font-bold text-purple-800 uppercase">Selecionar Beneficiário</label>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setEditingBen({ type: 'collaborator', name: '', roleOrCategory: '', phone: '', pixKey: '', dailyRate: undefined });
+                                    setIsBenModalOpen(true);
+                                }}
+                                className="text-xs text-purple-700 hover:underline font-bold flex items-center gap-1"
+                            >
+                                <Plus className="w-3 h-3" /> Cadastrar Novo
+                            </button>
+                        </div>
+                        <Select
+                            value={selectedBeneficiaryId}
+                            onChange={e => handleSelectBeneficiary(e.target.value)}
+                        >
+                            <option value="">-- Escolha para preencher automático (ou digite abaixo) --</option>
+                            {beneficiaries.map(b => (
+                                <option key={b.id} value={b.id}>
+                                    {b.name} ({b.type === 'collaborator' ? `Colab. - ${b.roleOrCategory || 'Geral'}` : `Forn. - ${b.roleOrCategory || 'Geral'}`})
+                                </option>
+                            ))}
+                        </Select>
+
+                        {selectedBenObj && selectedBenObj.type === 'collaborator' && selectedBenObj.dailyRate && (
+                            <div className="flex items-center justify-between bg-white p-2 rounded border border-purple-200 text-sm">
+                                <span className="text-purple-900 font-medium">
+                                    Diária: <strong>R$ {Number(selectedBenObj.dailyRate).toFixed(2)}</strong>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-600 font-bold">Qtd Diárias:</label>
+                                    <input
+                                        type="number"
+                                        min="0.5"
+                                        step="0.5"
+                                        value={daysWorked}
+                                        onChange={e => handleDaysChange(e.target.value)}
+                                        className="w-16 px-2 py-1 border rounded text-center font-bold text-purple-900"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <Input
+                        label="Fornecedor / Favorecido"
+                        placeholder="Nome do beneficiário"
+                        value={newBill.supplier || ''}
+                        onChange={e => setNewBill(p => ({ ...p, supplier: e.target.value }))}
+                        required
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Valor (R$)"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={newBill.value || ''}
+                            onChange={e => setNewBill(p => ({ ...p, value: e.target.value as any }))}
+                            required
+                        />
+                        <Input
+                            label="Vencimento"
+                            type="date"
+                            value={newBill.dueDate || ''}
+                            onChange={e => setNewBill(p => ({ ...p, dueDate: e.target.value }))}
+                            required
+                        />
+                    </div>
+
+                    <Select
+                        label="Forma de Pagamento"
+                        value={newBill.paymentMethod}
+                        onChange={e => setNewBill(p => ({ ...p, paymentMethod: e.target.value as any }))}
+                    >
+                        <option value="boleto">Boleto Bancário</option>
+                        <option value="pix">PIX</option>
+                        <option value="dinheiro">Dinheiro / Espécie</option>
+                    </Select>
+
+                    {newBill.paymentMethod === 'pix' && (
+                        <Input
+                            label="Chave PIX"
+                            placeholder="CPF, CNPJ, Email, Celular ou Aleatória"
+                            value={newBill.pixKey || ''}
+                            onChange={e => setNewBill(p => ({ ...p, pixKey: e.target.value }))}
+                            required
+                        />
+                    )}
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Anexar Nota / Boleto (Opcional)</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => billCameraInputRef.current?.click()}
+                                className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 text-sm font-medium"
+                            >
+                                <Camera className="w-5 h-5" /> Fotografar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => billFileInputRef.current?.click()}
+                                className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 text-sm font-medium"
+                            >
+                                <Upload className="w-5 h-5" /> Arquivo
+                            </button>
+                        </div>
+                        <input type="file" accept="image/*" capture="environment" ref={billCameraInputRef} onChange={handleBillFileChange} className="hidden" />
+                        <input type="file" accept="image/*,.pdf" ref={billFileInputRef} onChange={handleBillFileChange} className="hidden" />
+                        {billFileName && <p className="text-xs text-green-600 font-bold">Anexo: {billFileName}</p>}
+                    </div>
+
+                    <Button type="submit" isLoading={isSubmittingBill || isCompressing} className="w-full">
+                        Salvar Conta
+                    </Button>
+                </form>
+            </Modal>
+
+            {/* Modal Cadastro Beneficiário */}
+            <Modal
+                isOpen={isBenModalOpen}
+                onClose={() => setIsBenModalOpen(false)}
+                title={editingBen.id ? 'Editar Beneficiário' : 'Novo Beneficiário'}
+            >
+                <form onSubmit={handleSaveBeneficiary} className="space-y-4">
+                    <Select
+                        label="Tipo de Cadastro"
+                        value={editingBen.type || 'collaborator'}
+                        onChange={e => setEditingBen(p => ({ ...p, type: e.target.value as 'collaborator' | 'supplier' }))}
+                    >
+                        <option value="collaborator">Colaborador (Diarista / Funcionário)</option>
+                        <option value="supplier">Fornecedor / Prestador de Serviço</option>
+                    </Select>
+
+                    <Input
+                        label="Nome Completo / Razão Social"
+                        placeholder="Ex: João da Silva ou Gás Express"
+                        value={editingBen.name || ''}
+                        onChange={e => setEditingBen(p => ({ ...p, name: e.target.value }))}
+                        required
+                    />
+
+                    <Input
+                        label={editingBen.type === 'collaborator' ? 'Função' : 'Tipo de Fornecedor'}
+                        placeholder={editingBen.type === 'collaborator' ? 'Ex: Cozinheiro, Garçom, Segurança' : 'Ex: Bebidas, Manutenção, Hortifruti'}
+                        value={editingBen.roleOrCategory || ''}
+                        onChange={e => setEditingBen(p => ({ ...p, roleOrCategory: e.target.value }))}
+                        required
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
+                            label="Telefone / WhatsApp"
+                            placeholder="Ex: (11) 99999-9999"
+                            value={editingBen.phone || ''}
+                            onChange={e => setEditingBen(p => ({ ...p, phone: e.target.value }))}
+                        />
+                        <Input
+                            label="Número / Chave do PIX"
+                            placeholder="CPF, CNPJ, Celular, Email..."
+                            value={editingBen.pixKey || ''}
+                            onChange={e => setEditingBen(p => ({ ...p, pixKey: e.target.value }))}
+                            required
+                        />
+                    </div>
+
+                    {editingBen.type === 'collaborator' && (
+                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                            <Input
+                                label="Valor da Diária (R$)"
+                                type="number"
+                                step="0.01"
+                                placeholder="Ex: 120.00"
+                                value={editingBen.dailyRate || ''}
+                                onChange={e => setEditingBen(p => ({ ...p, dailyRate: e.target.value as any }))}
+                            />
+                            <p className="text-xs text-purple-700 mt-1">
+                                Ao selecionar este colaborador no lançamento, o valor da diária e o PIX serão preenchidos automaticamente.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                        <Button type="button" variant="outline" onClick={() => setIsBenModalOpen(false)} className="flex-1">
+                            Cancelar
+                        </Button>
+                        <Button type="submit" className="flex-1">
+                            Salvar Cadastro
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
 
             {/* Payment Modal */}
             <Modal isOpen={!!paymentBill} onClose={() => setPaymentBill(null)} title="Finalizar Pagamento">
