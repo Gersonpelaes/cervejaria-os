@@ -1,0 +1,429 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures under:
+// Base Path: /artifacts/default-shopping-platform/public/data/companies
+//
+// 1. Collection: companies
+//    Document ID: {companyId}
+//    Fields:
+//      - name: string (required, 1..200 chars) - Company display name
+//      - code: string (required, 1..100 chars) - Unique company login code
+//      - buyerPassword: string (required, 1..200 chars) - Buyer dashboard password
+//      - id: string (optional, <= 100 chars) - Document ID
+//
+// 2. Collection: companies/{companyId}/app_config
+//    Document ID: main (or {configId})
+//    Fields:
+//      - restaurants: list (required, <= 200 items) - List of restaurant objects {id, name}
+//      - sectors: list (required, <= 200 items) - List of sector objects {id, name}
+//      - units: list (required, <= 200 items) - List of unit objects {id, name}
+//      - categories: list (required, <= 200 items) - List of category objects {id, name}
+//      - admPasswords: map (optional, <= 200 keys) - Map of restaurantId to password
+//      - productionTasks: list (optional, <= 500 items) - Fixed production checklist items
+//      - labelTemplates: list (optional, <= 500 items) - Saved expiration label templates
+//      - useRemotePrinter: bool (optional) - Toggle for cloud print terminal
+//
+// 3. Collection: companies/{companyId}/stock_items
+//    Document ID: {itemId}
+//    Fields:
+//      - name: string (required, 1..200 chars) - Item name
+//      - unit: string (optional, <= 50 chars) - Measurement unit
+//      - category: string (optional, <= 100 chars) - Item category
+//      - minStock: number (optional, >= 0) - Minimum stock threshold
+//      - idealStock: number (optional, >= 0) - Ideal stock level
+//      - maxStock: number (optional, >= 0) - Maximum stock level
+//      - purchasePeriod: string (optional, <= 100 chars) - Purchasing frequency
+//      - purchaseUnitDescription: string (optional, <= 300 chars) - Packaging details
+//      - lastPrice: number (optional, >= 0) - Last unit price paid
+//      - avgPrice: number (optional, >= 0) - Weighted average unit price
+//      - purchaseCount: number (optional, >= 0) - Number of purchases recorded
+//      - currentStock: number (optional) - Legacy stock field
+//      - stockByRestaurant: map (optional, <= 200 keys) - Current stock per restaurantId
+//      - associations: map (optional, <= 200 keys) - Associated restaurants/sectors
+//      - supplierIds: list (optional, <= 200 items) - Linked supplier IDs
+//      - id: string (optional, <= 100 chars) - Document ID
+//
+// 4. Collection: companies/{companyId}/suppliers
+//    Document ID: {supplierId}
+//    Fields:
+//      - id: string (optional, <= 100 chars) - Supplier ID
+//      - name: string (required, 1..200 chars) - Supplier company name
+//      - contactName: string (optional, <= 200 chars) - Contact person name
+//      - phone: string (optional, <= 50 chars) - WhatsApp / phone number
+//      - email: string (optional, <= 200 chars) - Contact email
+//      - category: string (optional, <= 100 chars) - Supplier category
+//
+// 5. Collection: companies/{companyId}/beneficiaries
+//    Document ID: {beneficiaryId}
+//    Fields:
+//      - id: string (optional, <= 100 chars) - Beneficiary ID
+//      - name: string (required, 1..200 chars) - Full name or business name
+//      - type: string (required, 'collaborator' | 'supplier') - Beneficiary type
+//      - roleOrCategory: string (optional, <= 200 chars) - Role or supplier category
+//      - phone: string (optional, <= 50 chars) - Phone/WhatsApp
+//      - pixKey: string (optional, <= 200 chars) - PIX key
+//      - dailyRate: number | null (optional, >= 0) - Daily payment rate for collaborators
+//
+// 6. Collection: companies/{companyId}/daily_orders
+//    Document ID: {orderId} (format: YYYY-MM-DD_restaurantId_sectorId)
+//    Fields:
+//      - docId: string (optional, <= 150 chars) - UI helper ID
+//      - restaurantId: string (required, 1..100 chars) - Restaurant ID
+//      - sectorId: string (required, 1..100 chars) - Sector ID
+//      - responsibleName: string (optional, <= 200 chars) - Name of responsible person
+//      - collaborators: list (optional, <= 200 items) - Names of editors
+//      - orderDate: string (required, 1..30 chars) - Business date (YYYY-MM-DD)
+//      - createdAt: timestamp (optional) - Creation timestamp
+//      - items: list (required, <= 1000 items) - Ordered items array
+//      - stockCountRequested: bool (optional) - Whether buyer requested a stock count
+//      - messages: list (optional, <= 1000 items) - Chat messages between sector & buyer
+//      - hasUnreadBuyerMessage: bool (optional) - Unread flag for sector
+//      - hasUnreadSectorMessage: bool (optional) - Unread flag for buyer
+//
+// 7. Collection: companies/{companyId}/bills
+//    Document ID: {billId}
+//    Fields:
+//      - id: string (optional, <= 100 chars) - Bill ID
+//      - restaurantId: string (required, 1..100 chars) - Restaurant ID
+//      - supplier: string (required, 1..300 chars) - Supplier or beneficiary name
+//      - value: number (required, >= 0) - Bill monetary amount
+//      - paymentMethod: string (optional, 'pix' | 'boleto' | 'dinheiro') - Payment method
+//      - pixKey: string (optional, <= 200 chars) - PIX key
+//      - dueDate: string (required, 1..30 chars) - Due date (YYYY-MM-DD)
+//      - fileName: string | null (optional, <= 300 chars) - Attached bill filename
+//      - fileData: string | null (optional, <= 1000000 chars) - Base64 bill attachment
+//      - status: string (required, 'pending' | 'paid') - Payment status
+//      - createdAt: timestamp (optional) - Creation timestamp
+//      - createdBy: string (optional, <= 200 chars) - Creator name
+//      - paidAt: timestamp | null (optional) - Payment timestamp
+//      - receiptFileName: string | null (optional, <= 300 chars) - Receipt filename
+//      - receiptFileData: string | null (optional, <= 1000000 chars) - Base64 receipt
+//
+// 8. Collection: companies/{companyId}/stock_counts
+//    Document ID: {countId}
+//    Fields:
+//      - restaurantId: string (required, 1..100 chars) - Restaurant ID
+//      - sectorId: string (required, 1..100 chars) - Sector ID
+//      - countedBy: string (optional, <= 200 chars) - Counter name
+//      - countedAt: timestamp (optional) - Count timestamp
+//      - status: string (optional, 'pending' | 'validated') - Validation status
+//      - validatedBy: string (optional, <= 200 chars) - Validator name
+//      - validatedAt: timestamp | null (optional) - Validation timestamp
+//      - items: list (required, <= 1000 items) - Counted items array
+//
+// 9. Collection: companies/{companyId}/daily_productions
+//    Document ID: {prodId}
+//    Fields:
+//      - restaurantId: string (required, 1..100 chars) - Restaurant ID
+//      - sectorId: string (required, 1..100 chars) - Sector ID
+//      - date: string (required, 1..30 chars) - Production date (YYYY-MM-DD)
+//      - tasks: list (required, <= 500 items) - Daily checklist tasks
+//      - productionList: list (optional, <= 500 items) - Scheduled production items
+//
+// 10. Collection: companies/{companyId}/print_jobs
+//     Document ID: {jobId}
+//     Fields:
+//      - id: string (optional, <= 100 chars) - Print job ID
+//      - htmlContent: string (required, 1..500000 chars) - HTML content to print
+//      - status: string (required, 'pending' | 'completed') - Print job status
+//      - createdAt: timestamp (optional) - Creation timestamp
+//      - createdBy: string (optional, <= 200 chars) - Creator name
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated (including Anonymous Auth via ensureAuth())
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource (for user-owned documents)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        !('uid' in resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate string length
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present and not null, must be string within length)
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is string &&
+         data[field].size() >= minLen &&
+         data[field].size() <= maxLen);
+    }
+
+    // Validate optional number (if present and not null, must be number)
+    function isValidOptionalNumber(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] is number;
+    }
+
+    // Validate optional boolean (if present and not null, must be bool)
+    function isValidOptionalBool(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] is bool;
+    }
+
+    // Validate optional list with max size
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    // Validate optional map with max keys
+    function isValidOptionalMap(data, field, maxKeys) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is map && data[field].keys().size() <= maxKeys);
+    }
+
+    // ===============================================================
+    // Domain Validators (Called on BOTH create and update)
+    // ===============================================================
+
+    function isValidCompany(data) {
+      return data.keys().size() <= 10 &&
+        hasRequiredFields(['name', 'code', 'buyerPassword']) &&
+        validStringLength('name', 1, 200) &&
+        validStringLength('code', 1, 100) &&
+        validStringLength('buyerPassword', 1, 200) &&
+        isValidOptionalString(data, 'id', 0, 100);
+    }
+
+    function isValidAppConfig(data) {
+      return data.keys().size() <= 20 &&
+        isValidOptionalList(data, 'restaurants', 200) &&
+        isValidOptionalList(data, 'sectors', 200) &&
+        isValidOptionalList(data, 'units', 200) &&
+        isValidOptionalList(data, 'categories', 200) &&
+        isValidOptionalMap(data, 'admPasswords', 200) &&
+        isValidOptionalList(data, 'productionTasks', 500) &&
+        isValidOptionalList(data, 'labelTemplates', 500) &&
+        isValidOptionalBool(data, 'useRemotePrinter');
+    }
+
+    function isValidStockItem(data) {
+      return data.keys().size() <= 25 &&
+        hasRequiredFields(['name']) &&
+        validStringLength('name', 1, 200) &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'unit', 0, 50) &&
+        isValidOptionalString(data, 'category', 0, 100) &&
+        isValidOptionalNumber(data, 'minStock') &&
+        isValidOptionalNumber(data, 'idealStock') &&
+        isValidOptionalNumber(data, 'maxStock') &&
+        isValidOptionalString(data, 'purchasePeriod', 0, 100) &&
+        isValidOptionalString(data, 'purchaseUnitDescription', 0, 300) &&
+        isValidOptionalNumber(data, 'lastPrice') &&
+        isValidOptionalNumber(data, 'avgPrice') &&
+        isValidOptionalNumber(data, 'purchaseCount') &&
+        isValidOptionalNumber(data, 'currentStock') &&
+        isValidOptionalMap(data, 'stockByRestaurant', 200) &&
+        isValidOptionalMap(data, 'associations', 200) &&
+        isValidOptionalList(data, 'supplierIds', 200);
+    }
+
+    function isValidSupplier(data) {
+      return data.keys().size() <= 15 &&
+        hasRequiredFields(['name']) &&
+        validStringLength('name', 1, 200) &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'contactName', 0, 200) &&
+        isValidOptionalString(data, 'phone', 0, 50) &&
+        isValidOptionalString(data, 'email', 0, 200) &&
+        isValidOptionalString(data, 'category', 0, 100);
+    }
+
+    function isValidBeneficiary(data) {
+      return data.keys().size() <= 15 &&
+        hasRequiredFields(['name', 'type']) &&
+        validStringLength('name', 1, 200) &&
+        data.type in ['collaborator', 'supplier'] &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'roleOrCategory', 0, 200) &&
+        isValidOptionalString(data, 'phone', 0, 50) &&
+        isValidOptionalString(data, 'pixKey', 0, 200) &&
+        isValidOptionalNumber(data, 'dailyRate');
+    }
+
+    function isValidDailyOrder(data) {
+      return data.keys().size() <= 25 &&
+        hasRequiredFields(['restaurantId', 'sectorId', 'orderDate', 'items']) &&
+        validStringLength('restaurantId', 1, 100) &&
+        validStringLength('sectorId', 1, 100) &&
+        validStringLength('orderDate', 1, 30) &&
+        data.items is list && data.items.size() <= 1000 &&
+        isValidOptionalString(data, 'docId', 0, 150) &&
+        isValidOptionalString(data, 'responsibleName', 0, 200) &&
+        isValidOptionalList(data, 'collaborators', 200) &&
+        isValidOptionalBool(data, 'stockCountRequested') &&
+        isValidOptionalList(data, 'messages', 1000) &&
+        isValidOptionalBool(data, 'hasUnreadBuyerMessage') &&
+        isValidOptionalBool(data, 'hasUnreadSectorMessage');
+    }
+
+    function isValidBill(data) {
+      return data.keys().size() <= 25 &&
+        hasRequiredFields(['restaurantId', 'supplier', 'value', 'dueDate', 'status']) &&
+        validStringLength('restaurantId', 1, 100) &&
+        validStringLength('supplier', 1, 300) &&
+        data.value is number && data.value >= 0 &&
+        validStringLength('dueDate', 1, 30) &&
+        data.status in ['pending', 'paid'] &&
+        (!('paymentMethod' in data) || data.paymentMethod == null || data.paymentMethod in ['pix', 'boleto', 'dinheiro']) &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'pixKey', 0, 200) &&
+        isValidOptionalString(data, 'fileName', 0, 300) &&
+        isValidOptionalString(data, 'fileData', 0, 1000000) &&
+        isValidOptionalString(data, 'createdBy', 0, 200) &&
+        isValidOptionalString(data, 'receiptFileName', 0, 300) &&
+        isValidOptionalString(data, 'receiptFileData', 0, 1000000);
+    }
+
+    function isValidStockCount(data) {
+      return data.keys().size() <= 20 &&
+        hasRequiredFields(['restaurantId', 'sectorId', 'items']) &&
+        validStringLength('restaurantId', 1, 100) &&
+        validStringLength('sectorId', 1, 100) &&
+        data.items is list && data.items.size() <= 1000 &&
+        isValidOptionalString(data, 'countedBy', 0, 200) &&
+        (!('status' in data) || data.status == null || data.status in ['pending', 'validated']) &&
+        isValidOptionalString(data, 'validatedBy', 0, 200);
+    }
+
+    function isValidDailyProduction(data) {
+      return data.keys().size() <= 20 &&
+        hasRequiredFields(['restaurantId', 'sectorId', 'date', 'tasks']) &&
+        validStringLength('restaurantId', 1, 100) &&
+        validStringLength('sectorId', 1, 100) &&
+        validStringLength('date', 1, 30) &&
+        data.tasks is list && data.tasks.size() <= 500 &&
+        isValidOptionalList(data, 'productionList', 500);
+    }
+
+    function isValidPrintJob(data) {
+      return data.keys().size() <= 15 &&
+        hasRequiredFields(['htmlContent', 'status']) &&
+        validStringLength('htmlContent', 1, 500000) &&
+        data.status in ['pending', 'completed'] &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'createdBy', 0, 200);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /artifacts/default-shopping-platform/public/data/companies/{companyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && uidUnchanged() && isValidCompany(request.resource.data);
+      allow update: if isAuthenticated() && uidNotModified() && isValidCompany(request.resource.data);
+      allow delete: if isAuthenticated();
+
+      match /app_config/{configId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidAppConfig(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidAppConfig(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /stock_items/{itemId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidStockItem(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidStockItem(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /suppliers/{supplierId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidSupplier(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidSupplier(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /beneficiaries/{beneficiaryId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidBeneficiary(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidBeneficiary(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /daily_orders/{orderId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidDailyOrder(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidDailyOrder(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /bills/{billId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidBill(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidBill(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /stock_counts/{countId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidStockCount(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidStockCount(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /daily_productions/{prodId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidDailyProduction(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidDailyProduction(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+
+      match /print_jobs/{jobId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && uidUnchanged() && isValidPrintJob(request.resource.data);
+        allow update: if isAuthenticated() && uidNotModified() && isValidPrintJob(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

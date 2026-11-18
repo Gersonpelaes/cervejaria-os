@@ -340,6 +340,8 @@ const AppShell = () => {
                 setLoading(false);
             } catch (error) {
                 console.error("Initialization error:", error);
+                alert("Erro ao conectar ao banco de dados (Firebase). Verifique a conexão ou as regras de acesso.");
+                setLoading(false);
             }
         };
 
